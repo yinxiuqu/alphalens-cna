@@ -97,7 +97,7 @@ def read_token():
     """从 quantaxis 配置的 [TSPRO] 段读 tushare token（不调 ts.set_token，它会写 ~/tk.csv）。"""
     cfg = os.path.expanduser('~/.quantaxis/setting/config.ini')
     if not os.path.exists(cfg):
-        cfg = 'os.path.expanduser('~/.quantaxis')/setting/config.ini'
+        cfg = os.path.expanduser('~/.quantaxis/setting/config.ini')
     in_tspro = False
     for line in open(cfg, encoding='utf-8'):
         s = line.strip()
