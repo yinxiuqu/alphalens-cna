@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试 (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 安装
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: 跑测试
+        run: pytest -q
+
+  parity:
+    # ★ 防线 4：与 alphalens 的等价性回归必须常驻 CI。
+    #   退化配置下三个核心量的最大差必须**恰好 0.0**，不是"接近"。
+    name: 等价性回归 (与 alphalens 逐位对拍)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装（含对拍可选依赖）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,compat]"
+      - name: 对拍 —— 逐位相同才算过
+        run: pytest tests/test_compat.py -q -v
+
+  no-plotting-dep:
+    # ★ D3 回归：import 本库**不得**拉起 matplotlib / seaborn。
+    name: 零绘图依赖 (核心包不许 import 绘图库)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装（只装核心依赖）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: import 后检查 sys.modules
+        run: |
+          python - <<'PY'
+          import sys
+          import alphalens_cna  # noqa: F401
+          bad = [m for m in ('matplotlib', 'seaborn', 'plotly')
+                 if m in sys.modules]
+          assert not bad, f'核心包不该拉起绘图库，实际拉起了：{bad}'
+          print('✓ 零绘图依赖')
+          PY

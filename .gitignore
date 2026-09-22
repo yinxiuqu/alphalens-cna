@@ -1,0 +1,37 @@
+# ── 数据缓存与本地环境（体积大、可重建、含私有数据）────────────────
+cache/
+.qh/
+.pylibs/
+.mplcache/
+.pipcache/
+dist/
+build/
+*.egg-info/
+
+# ── outputs：只留 Markdown 报告与图表，其余（大 JSON/CSV 中间产物）不入库
+outputs/*
+!outputs/*.md
+!outputs/charts/
+!outputs/charts/**
+
+# ── 研究台账（每个人自己的假设记录，不该进公共仓库）
+*.jsonl
+.alphalens_ledger.jsonl
+
+# ── Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+
+# ── 浏览器自动化临时目录 / 生成物
+.chrome-tmp/
+.aws-article/
+report.md
+*.log
