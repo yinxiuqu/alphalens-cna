@@ -68,7 +68,16 @@ def check_extreme_moves(prices, th):
     """
     if 'raw_close' not in prices.columns:
         return Finding('极端涨跌', 'skip', '无 `raw_close`，跳过')
-    r = prices['raw_close'].groupby(level='asset').pct_change()
+    # ★ 这里**故意**用"上一个有效价"当分母，而不是前一日价格：
+    #   停牌三周后复牌暴涨 100% 是真实跳变，正是这条检查该抓的东西。
+    #   但只在**有实际成交价**的日子计数 —— 所以不会像 ``pct_change()``
+    #   的默认前值填充那样，在停牌期间凭空造出一串"0 收益"。
+    #   （同一个坑在 ``analysis/event.py`` 里也踩过：那里要的是"窗口内不许有停牌"，
+    #     所以用的是 ``fill_method=None`` —— 两处语义不同，别照抄。）
+    c = prices['raw_close']
+    last_valid = c.groupby(level='asset').ffill()
+    prev = last_valid.groupby(level='asset').shift(1)
+    r = (c / prev - 1).where(c.notna() & prev.notna())
     # 每只票的第一行没有前收，不算
     first = prices.groupby(level='asset').cumcount() == 0
     flag = (r.abs() > th['extreme_move']) & ~first

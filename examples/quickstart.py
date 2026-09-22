@@ -37,7 +37,8 @@ def make_data(n_days=300, n_assets=80, seed=7):
                   'raw_open', 'raw_close', 'raw_high', 'raw_low', 'volume']] = np.nan
 
     # 因子：与下期收益**弱正相关**（让报告里能看到点东西）
-    fwd = pd.Series(px['adj_close'].groupby(level='asset').pct_change().shift(-21),
+    fwd = pd.Series(px['adj_close'].groupby(level='asset')
+                    .pct_change(fill_method=None).shift(-21),
                     index=idx)
     f = pd.DataFrame({
         'value': 0.10 * fwd.fillna(0).to_numpy() + rng.normal(size=n) * 0.05 +

@@ -35,6 +35,15 @@ pip install alphalens-cna            # 依赖只有 numpy / pandas / scipy
 | 5 | 已知答案测试 | `tests/`（301 个） | 每处逻辑都有能手算的数据集 |
 | 6 | 稳健性报告 | `inference/{robustness,rank_entropy}` | 扰动分布 + 排名熵，**不给单一数字** |
 
+## 长什么样
+
+![demo](docs/images/demo.png)
+
+> 上图由 `python examples/make_charts.py` 生成，**数据是合成的** ——
+> clone 下来就能自己重跑。用私有数据出的图表放在 `docs/cases/`，
+> 那里明确标注了**不可复现**：本库的卖点是"证据可复现"，
+> 读者只能看不能验的图，不该拿来当门面。
+
 ## 三分钟上手
 
 ```python

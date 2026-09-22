@@ -60,6 +60,11 @@
 | 体检 | `python verify_health.py` |
 | 换手口径 | `python verify_turnover.py` |
 
-> 需要 `私有数据仓` 的 PIT 财务表与本地 mongo（`私有数据仓`/`mongodb` 均为私有数据源，
+> ⚠️ **本目录的图表与数字来自私有数据，不可复现。**
+> 它们的作用是**证据留痕与回归基线**（库改动让这些数字变了，就说明有事发生），
+> 不是给读者验证用的。要看可复现的示范，请跑 `examples/quickstart.py`
+> （只用合成数据）与 `examples/make_charts.py`。
+
+> 复现需要 `私有数据仓` 的 PIT 财务表与本地 mongo（`私有数据仓`/`mongodb` 均为私有数据源，
 > 适配器在 `examples/`，**不进核心包**）。核心包本身只认契约对象，
 > 用 `examples/quickstart.py` 的合成数据即可跑通全流程。

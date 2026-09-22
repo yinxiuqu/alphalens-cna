@@ -355,3 +355,23 @@ def test_warnings_list_is_human_readable():
     rep = HealthReport(findings=[Finding('存活偏差', 'warn', '全票善终')])
     assert rep.warnings == ['存活偏差：全票善终']
     assert rep.ok is True, '只有 warn 时不算未通过'
+
+
+def test_extreme_move_ignores_suspension_days():
+    """★ 停牌日不许被前值填充伪装成 0 收益（体检层自己也不能造假数据）。
+
+    停牌 → 复牌暴涨这个真实跳变**要**被抓到；
+    停牌**期间**那些假 0 收益不该出现在统计里。
+    """
+    df = mk_prices()
+    d = df.index.get_level_values('date')
+    a = df.index.get_level_values('asset')
+    # 000000 停牌 3 天，复牌当天价格翻倍
+    gap = (a == '000000') & (d >= DATES[10]) & (d <= DATES[12])
+    df.loc[gap, ['raw_open', 'raw_high', 'raw_low', 'raw_close']] = np.nan
+    df.loc[(a == '000000') & (d == DATES[13]),
+           ['raw_open', 'raw_high', 'raw_low', 'raw_close']] = 20.0
+    f = find(acna.health_check(prices=df), '极端涨跌')
+    # 复牌 +100% 必须被抓到
+    assert f.severity in ('warn', 'fail')
+    assert f.metric >= 1
