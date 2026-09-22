@@ -151,8 +151,14 @@ def nw_tstat(x, lags=None, horizon=1):
     #    会出现"32 期却报了 125 阶滞后"这种自相矛盾的输出（实测踩过）。
     lags = int(min(max(int(lags), 0), max(n - 2, 0)))
     mean = float(x.mean())
-    sd = float(x.std(ddof=1))
-    t_naive = mean / (sd / np.sqrt(n)) if sd > 0 else np.nan
+    # ★ 朴素 t 与 NW t 必须走**同一个方差来源**。
+    #   原实现里 t_naive 用 numpy.std(ddof=1)、t_nw 用 np.dot(d,d)/(n-1) ——
+    #   数学上相等，但浮点求和顺序不同：本机 BLAS 上恰好一致，
+    #   GitHub Actions 的 BLAS 上差 1 ULP（CI 实测 -0.2866165090394768
+    #   vs -0.28661650903947683）。差最后一位不是"精度问题"，
+    #   是**两个真相源** —— 修掉源头，而不是把断言放松。
+    g0 = nw_variance(x, 0, horizon)
+    t_naive = mean / np.sqrt(g0 / n) if g0 > 0 else np.nan
     S = nw_variance(x, lags, horizon)
     se = np.sqrt(S / n)
     t_nw = mean / se if se > 0 else np.nan
