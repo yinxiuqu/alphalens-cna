@@ -60,7 +60,7 @@ _cfg_dst = os.path.join(_FAKE_HOME, '.quantaxis', 'setting', 'config.ini')
 if os.path.exists(_cfg_src) and not os.path.exists(_cfg_dst):
     shutil.copy(_cfg_src, _cfg_dst)
 os.environ['HOME'] = _FAKE_HOME
-sys.path.insert(0, '/home/yinxiuqu/quantaxis')
+sys.path.insert(0, '<HOME>/quantaxis')
 
 import pandas as pd
 import pymongo

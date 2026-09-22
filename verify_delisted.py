@@ -24,7 +24,7 @@ import shutil
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REAL_QA = '/home/yinxiuqu/.quantaxis'
+_REAL_QA = 'os.path.expanduser('~/.quantaxis')'
 _FAKE_HOME = os.path.join(_HERE, '.qh')
 os.makedirs(os.path.join(_FAKE_HOME, '.quantaxis', 'log'), exist_ok=True)
 os.makedirs(os.path.join(_FAKE_HOME, '.quantaxis', 'setting'), exist_ok=True)
@@ -33,7 +33,7 @@ _cd = os.path.join(_FAKE_HOME, '.quantaxis', 'setting', 'config.ini')
 if os.path.exists(_cs) and not os.path.exists(_cd):
     shutil.copy(_cs, _cd)
 os.environ['HOME'] = _FAKE_HOME
-sys.path.insert(0, '/home/yinxiuqu/quantaxis')
+sys.path.insert(0, '<HOME>/quantaxis')
 
 import numpy as np
 import pandas as pd
