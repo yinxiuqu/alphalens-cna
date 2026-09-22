@@ -3,14 +3,14 @@
 
 数据链路
 --------
-  财务:  /home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet
+  财务:  <DATA_ROOT>/data/financial_pit/financial_pit.parquet
          (PIT 层, avail_314 = 财报公告日 + 1 个交易日, 避免前视)
   行情:  cache/px_daily.parquet  (由 prep_panel.py 从 quantaxis mongo 构建的复权价)
 
 因子口径
 --------
   * 因子: 净资产收益率 roe (tushare/通达信字段 197), PIT as-of, staleness <= 400 天
-  * 调仓: 月度(每月最后交易日), 与 quantming 的因子约定一致
+  * 调仓: 月度(每月最后交易日), 与 私有数据仓 的因子约定一致
   * 持有期: 1 / 5 / 10 / 20 个交易日
   * 分层: 5 分位
 
@@ -40,11 +40,16 @@ from alphalens import performance as perf
 from alphalens import plotting as apl
 from alphalens.utils import get_clean_factor_and_forward_returns, get_forward_returns_columns
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'cache')
 OUT = os.path.join(HERE, 'outputs')
 CHARTS = os.path.join(OUT, 'charts')
-PIT_PATH = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT_PATH = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 
 FACTOR_START, FACTOR_END = '2019-01-01', '2026-07-31'
 PERIODS = (1, 5, 10, 20)

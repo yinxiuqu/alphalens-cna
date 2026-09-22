@@ -134,7 +134,7 @@
 ## 七、复现
 
 ```bash
-cd /home/yinxiuqu/alphalens-cna
+cd <REPO_ROOT>
 python run_fama_macbeth.py
 ```
 

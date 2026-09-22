@@ -172,7 +172,7 @@ alphalens quantile_turnover(Q1):       nan
 ## 七、复现
 
 ```bash
-cd /home/yinxiuqu/alphalens-cna
+cd <REPO_ROOT>
 python prep_open.py           # 补开盘价面板 (~7 min)
 python run_monthly_roe.py     # 月度调仓三口径分析
 ```

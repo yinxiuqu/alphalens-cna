@@ -14,6 +14,11 @@ import accept_m0 as A, alphalens_cna as acna
 from alphalens_cna.engine.clean import clean
 from alphalens_cna.engine.returns import ReturnModel, forward_returns
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 ABS = -0.50
 
 
@@ -41,8 +46,8 @@ def load_industry(rebal):
 
     比"最新快照"正确：行业分类会变，用今天的行业去解释 2019 年的股票是前视。
     """
-    m = pd.read_parquet('/home/yinxiuqu/quantming/data/sw_industry/members.parquet')
-    c = pd.read_parquet('/home/yinxiuqu/quantming/data/sw_industry/classify.parquet')
+    m = pd.read_parquet(os.path.join(DATA_ROOT, 'data/sw_industry/members.parquet'))
+    c = pd.read_parquet(os.path.join(DATA_ROOT, 'data/sw_industry/classify.parquet'))
     m = m[(m['level'] == 'L1') & (m['con_code'].notna())].copy()
     m['con_code'] = m['con_code'].astype(str).str.zfill(6).str[:6]
     m['in_date'] = pd.to_datetime(m['in_date'], errors='coerce')

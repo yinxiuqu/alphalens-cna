@@ -40,10 +40,15 @@ plt.rcParams['axes.unicode_minus'] = False
 from alphalens import performance as perf
 from alphalens.utils import get_clean_factor, get_forward_returns_columns
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE, OUT = os.path.join(HERE, 'cache'), os.path.join(HERE, 'outputs')
 CHARTS = os.path.join(OUT, 'charts')
-PIT_PATH = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT_PATH = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 
 FACTOR_START, FACTOR_END = '2019-01-01', '2026-07-31'
 HORIZONS = (21, 63, 126, 252)          # 交易日 ≈ 1/3/6/12 月

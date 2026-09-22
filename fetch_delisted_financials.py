@@ -20,7 +20,7 @@
     income.n_income_attr_p              → net_income_attr_p
     balancesheet.total_hldr_eqy_exc_min_int → equity_attr_p
 
-口径对齐（与 ``quantming/tools/financial_pit.py`` 完全一致）
+口径对齐（与 ``私有数据仓/tools/financial_pit.py`` 完全一致）
 -----------------------------------------------------------
 * ``report_date``  : ``int32``，形如 ``20240630``
 * ``roe``          : ``float32``，百分数、**不年化、非加权平均**
@@ -60,6 +60,11 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
@@ -69,7 +74,7 @@ os.makedirs(os.path.join(HERE, '.qh', '.quantaxis', 'log'), exist_ok=True)
 os.makedirs(os.path.join(HERE, '.qh', '.quantaxis', 'setting'), exist_ok=True)
 
 MONGO_URI, MONGO_DB = 'mongodb://127.0.0.1:27017', 'quantaxis'
-PIT_PATH = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT_PATH = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 CACHE = os.path.join(HERE, 'cache')
 OUT = os.path.join(CACHE, 'financial_delisted.parquet')
 MERGED = os.path.join(CACHE, 'financial_pit_with_delisted.parquet')

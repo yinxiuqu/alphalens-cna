@@ -38,13 +38,18 @@ import pandas as pd
 import statsmodels.api as sm
 from pymongo import MongoClient
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 plt.rcParams['font.sans-serif'] = ['FZLanTingHei-R-GBK', 'Droid Sans Fallback', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE, OUT = os.path.join(HERE, 'cache'), os.path.join(HERE, 'outputs')
 CHARTS = os.path.join(OUT, 'charts')
-PIT_PATH = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT_PATH = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 
 START, END = '2019-01-01', '2026-07-31'
 H_FWD = 21                    # 21 交易日 ≈ 1 个月

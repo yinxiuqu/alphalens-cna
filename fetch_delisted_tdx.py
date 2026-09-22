@@ -51,7 +51,7 @@ import time
 # quantaxis 导入时要写 ~/.quantaxis/log/，而这些目录在沙箱外只读。
 # 把 HOME 强制指向工作区内的影子目录（必须覆盖，setdefault 不生效）。
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_REAL_QA = '/home/yinxiuqu/.quantaxis'
+_REAL_QA = os.path.expanduser('~/.quantaxis')   # quantaxis 配置目录
 _FAKE_HOME = os.path.join(_HERE, '.qh')
 os.makedirs(os.path.join(_FAKE_HOME, '.quantaxis', 'log'), exist_ok=True)
 os.makedirs(os.path.join(_FAKE_HOME, '.quantaxis', 'setting'), exist_ok=True)

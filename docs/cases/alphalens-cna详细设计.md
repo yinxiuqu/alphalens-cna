@@ -245,7 +245,7 @@ policy = 'skip'      → 该样本标记为不可成交, 从分析中剔除 (默
 from alphalens_cna.adapters import (
     from_qa_datastruct,   # QA_DataStruct_Stock_day (MultiIndex date,code)
     from_mongo,           # quantaxis mongo: stock_day + stock_adj + stock_daily_basic
-    from_quantming,       # quantming/data 下的 parquet (financial_pit / sw_industry)
+    from_私有数据仓,       # <DATA_ROOT>/data 下的 parquet (financial_pit / sw_industry)
 )
 ```
 
@@ -261,9 +261,9 @@ from alphalens_cna.adapters import (
 | 因子是 (date,code) 长表 | 同上 | 直接复用 |
 | `financial_pit.avail_314` | `available_at` | 映射（这正是 PIT 语义） |
 
-### 4.2 复用 quantming 已建好的数据层
+### 4.2 复用 私有数据仓 已建好的数据层
 
-| quantming 资产 | 在新库里的角色 |
+| 私有数据仓 资产 | 在新库里的角色 |
 |---|---|
 | `financial_pit`（PIT 财务，25 因子） | 因子来源；其 `avail_314` 直接作为 `available_at` |
 | `sw_industry/members`（事件态成份股） | **行业中性化**的分组输入（as-of 取成分） |
@@ -284,14 +284,14 @@ alphalens_cna/
 │   ├── clean.py         清洗（带原因的账）
 │   ├── quantize.py      分层（含行业中性分层）
 │   └── metrics.py       IC / RankIC / ICIR / NW-t / 分层 / 换手 / 衰减
-├── adapters/            quantaxis / mongo / quantming 适配
+├── adapters/            quantaxis / mongo / 私有数据仓 适配
 ├── validate/            六道防线（体检 + 不变量 + 稳健性报告）
 └── compat/              alphalens 输入输出适配（对拍用）
 ```
 
 **绘图策略（按你的要求）**：核心**只产出 tidy DataFrame / dict**，
 例如 `metrics.to_frame()`、`quantile_returns.to_frame()`，
-任何绘图工具（matplotlib / plotly / 你自己 quantming 的 `plot_tools.py`）都能直接消费。
+任何绘图工具（matplotlib / plotly / 你自己 私有数据仓 的 `plot_tools.py`）都能直接消费。
 **不引入任何绘图依赖，也不内置画图函数。**
 
 ---
@@ -355,7 +355,7 @@ alphalens_cna/
 
 - ❌ **不做绘图**（按你的要求）—— 只输出数据，画图交给外部工具
 - ❌ 不做回测引擎 / 撮合 / 资金管理（quantaxis / QARSBridge 的职责）
-- ❌ 不做数据获取与存储（用现有 mongo + quantming parquet 层）
+- ❌ 不做数据获取与存储（用现有 mongo + 私有数据仓 parquet 层）
 - ❌ 不做 Barra 风险模型（可后续以适配器形式接）
 - ❌ **不重新定义 IC / 分层 / 换手** —— 沿用学术共识，保证结论与业界可比
 

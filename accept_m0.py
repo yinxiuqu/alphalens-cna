@@ -29,9 +29,14 @@ import alphalens_cna as acna
 from alphalens_cna.engine.clean import clean
 from alphalens_cna.engine.returns import ReturnModel, forward_returns
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, 'cache')
-PIT = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 
 # PIT 模式（三段对照，环境变量切换）：
 #   original         原始 PIT（= 早前报告的基线，含存活偏差）

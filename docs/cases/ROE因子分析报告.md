@@ -26,7 +26,7 @@ quantaxis.stock_day(close)  ─┐
 quantaxis.stock_adj(adj)    ─┴─► px_daily.parquet   日度复权价 2600×5066
                                   (复权因子缺失 0.00%)
 
-quantming/data/financial_pit/financial_pit.parquet
+<DATA_ROOT>/data/financial_pit/financial_pit.parquet
     └─ roe(字段197) + avail_314(公告日+1交易日) ──► PIT as-of 面板
 ```
 
@@ -132,7 +132,7 @@ quantming/data/financial_pit/financial_pit.parquet
 ## 七、复现方式
 
 ```bash
-cd /home/yinxiuqu/alphalens-cna
+cd <REPO_ROOT>
 python prep_panel.py            # 建面板 (~7 min, 从 mongo 取 1030 万行)
 python run_roe_analysis.py      # ROE 分析
 python run_momentum_control.py  # 动量对照

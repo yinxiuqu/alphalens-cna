@@ -13,14 +13,14 @@
 每日指标（市值/换手/涨跌停）    mongo ``stock_daily_basic``
 **PIT 名称（ST 判定）**        mongo ``stock_namechange``  ← 事件式区间，1990–今
 上市/退市日                     mongo ``stock_basic``
-PIT 财务（因子源）              ``quantming/data/financial_pit/*.parquet``
-申万行业（分组）                ``quantming/data/sw_industry/*.parquet``
+PIT 财务（因子源）              ``私有数据仓/data/financial_pit/*.parquet``
+申万行业（分组）                ``私有数据仓/data/sw_industry/*.parquet``
 ============================  ==========================================
 
 用法
 ----
 >>> import sys; sys.path.insert(0, 'examples')
->>> from quantming_adapter import QuantmingAdapter
+>>> from 私有数据仓_adapter import QuantmingAdapter
 >>> src = QuantmingAdapter()
 >>> px   = acna.load_prices(source=src, start='2020-01-01', end='2024-12-31')
 >>> roe  = acna.load_factor('roe', source=src, start='2020-01-01')
@@ -40,17 +40,17 @@ from alphalens_cna.adapters.input.base import InputAdapter
 
 MONGO = os.environ.get('QA_MONGO', 'mongodb://127.0.0.1:27017')
 DB = os.environ.get('QA_DB', 'quantaxis')
-QUANTMING = os.path.expanduser(os.environ.get('QUANTMING_DIR', '~/quantming'))
+QUANTMING = os.path.expanduser(os.environ.get('QUANTMING_DIR', '~/私有数据仓'))
 
 
 class QuantmingAdapter(InputAdapter):
-    """接本机 quantaxis mongo + quantming parquet。"""
+    """接本机 quantaxis mongo + 私有数据仓 parquet。"""
 
-    name = 'quantming'
+    name = '私有数据仓'
 
-    def __init__(self, mongo=MONGO, db=DB, quantming=QUANTMING):
+    def __init__(self, mongo=MONGO, db=DB, 私有数据仓=QUANTMING):
         self.db = pymongo.MongoClient(mongo)[db]
-        self.root = quantming
+        self.root = 私有数据仓
         self._cal = None
 
     # ---------------------------------------------------------------- 行情 --
@@ -75,7 +75,7 @@ class QuantmingAdapter(InputAdapter):
         if not len(d):
             return None
         if codes is None and time.time() - t0 > 30:
-            print(f'[quantming] 全表扫 stock_day 用了 {time.time()-t0:.0f}s；'
+            print(f'[私有数据仓] 全表扫 stock_day 用了 {time.time()-t0:.0f}s；'
                   f'建议传 codes= 或先跑 prep_panel.py 建缓存', flush=True)
         d['date'] = pd.to_datetime(d['date'])
         d = d.rename(columns={'code': 'asset', 'open': 'raw_open', 'high': 'raw_high',

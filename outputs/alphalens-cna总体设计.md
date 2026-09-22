@@ -57,7 +57,7 @@
 │  L0  契约层 ★  FactorPanel / PricePanel / Tradability /       │
 │                Calendar / Universe / Grouping                │
 ├─────────────────────────────────────────────────────────────┤
-│      适配层    quantaxis / quantming / alphalens(对拍)        │
+│      适配层    quantaxis / 私有数据仓 / alphalens(对拍)        │
 └─────────────────────────────────────────────────────────────┘
         ▲                                        ▲
         │           研究台账 Ledger ★             │
@@ -188,8 +188,8 @@ mydata/
 | 上市 / 退市日 | mongo `stock_basic` | 私有扩展 |
 | 业绩预告 | mongo `stock_forecast` | 私有扩展 |
 | 交易日历 | mongo `index_day`（上证指数） | 公开 schema |
-| PIT 财务（因子源） | parquet `quantming/data/financial_pit` | **私有布局** |
-| 申万行业（分组） | parquet `quantming/data/sw_industry` | **私有布局** |
+| PIT 财务（因子源） | parquet `<DATA_ROOT>/data/financial_pit` | **私有布局** |
+| 申万行业（分组） | parquet `<DATA_ROOT>/data/sw_industry` | **私有布局** |
 | 面板缓存 | workspace `cache/*.parquet` | 本库自产 |
 
 > **公开 schema 的可以内置适配器；私有的走 `examples/`。**
@@ -691,7 +691,7 @@ spec = Spec(
 
 - ❌ **不做绘图**（核心零绘图依赖）
 - ❌ 不做回测引擎 / 撮合 / 资金管理（quantaxis / QARSBridge 的职责）
-- ❌ 不做数据获取与存储（用现有 mongo + quantming parquet 层）
+- ❌ 不做数据获取与存储（用现有 mongo + 私有数据仓 parquet 层）
 - ❌ 不做 Barra 风险模型（可后续以适配器形式接）
 - ❌ **不重新定义 IC / 分层 / 换手** —— 沿用学术共识，保证与业界可比
 - ❌ 不做因子挖掘（遗传算法等）—— 那是 `FactorHub` 的赛道，不是"验证内核"

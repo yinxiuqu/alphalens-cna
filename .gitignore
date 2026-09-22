@@ -35,3 +35,7 @@ htmlcov/
 .aws-article/
 report.md
 *.log
+
+# ── 本机 IM 投递工具（含 DSH 集成私有路径，不属于开源库）
+push.py
+wechat_send.py

@@ -4,7 +4,7 @@
 事件研究能不能做？
     能。本质就是"把事件日前后 N 天的收益窗口对齐后取平均"，比因子分析简单。
 
-事件源: quantming/data/financial_pit 的 `ann_314` = 财报公告日
+事件源: 私有数据仓/data/financial_pit 的 `ann_314` = 财报公告日
 问题:   财报公告前后，股价怎么走？按"业绩惊喜"分组后有没有漂移（PEAD）？
 
 同时与 alphalens 的 average_cumulative_return_by_quantile **对拍**，
@@ -30,10 +30,15 @@ plt.rcParams['axes.unicode_minus'] = False
 from alphalens import performance as perf
 from alphalens.utils import get_clean_factor
 
+# 私有数据根目录（可用环境变量 ALPHALENS_DATA_ROOT 覆盖）
+DATA_ROOT = os.environ.get(
+    'ALPHALENS_DATA_ROOT',
+    os.path.expanduser('~/alphalens-data'))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE, OUT = os.path.join(HERE, 'cache'), os.path.join(HERE, 'outputs')
 CHARTS = os.path.join(OUT, 'charts')
-PIT = '/home/yinxiuqu/quantming/data/financial_pit/financial_pit.parquet'
+PIT = os.path.join(DATA_ROOT, 'data/financial_pit/financial_pit.parquet')
 
 BEFORE, AFTER = 5, 20          # 事件窗口: -5 ~ +20 交易日
 START, END = '2020-01-01', '2026-06-30'

@@ -60,6 +60,6 @@
 | 体检 | `python verify_health.py` |
 | 换手口径 | `python verify_turnover.py` |
 
-> 需要 `quantming` 的 PIT 财务表与本地 mongo（`quantming`/`mongodb` 均为私有数据源，
+> 需要 `私有数据仓` 的 PIT 财务表与本地 mongo（`私有数据仓`/`mongodb` 均为私有数据源，
 > 适配器在 `examples/`，**不进核心包**）。核心包本身只认契约对象，
 > 用 `examples/quickstart.py` 的合成数据即可跑通全流程。

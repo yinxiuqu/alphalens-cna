@@ -15,7 +15,7 @@ f3 = acna.neutralize(acna.neutralize(factor, groups=industry),  # 行业 + 市�
                      exposures=ln_mv.to_frame())
 ```
 
-行业用 `quantming/data/sw_industry/members.parquet`（SW2021，L1，31 个行业）——
+行业用 `<DATA_ROOT>/data/sw_industry/members.parquet`（SW2021，L1，31 个行业）——
 它是**带 `in_date`/`out_date` 的 PIT 成分表**，所以按调仓日 **as-of** 取行业，
 而不是拿今天的行业快照去解释 2019 年的股票（那是前视）。
 as-of 展开 450,516 条覆盖 91 个调仓日。
