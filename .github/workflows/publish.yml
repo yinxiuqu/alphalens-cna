@@ -1,0 +1,25 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]   # 发布 GitHub Release 时触发
+
+jobs:
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi      # 需与 PyPI 配置中的 Environment name 一致（如果填了的话）
+    permissions:
+      id-token: write      # 必须！用于 OIDC 认证
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build package
+        run: |
+          python -m pip install build
+          python -m build
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # 不需要 password，OIDC 自动认证
