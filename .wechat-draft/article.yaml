@@ -1,0 +1,20 @@
+title: "IC看不见崩盘：ROE因子全身检查"
+author: "CowBoy"
+digest: "一个 A 股 ROE 因子，先被存活偏差骗过一次，又被市值混杂骗过一次。补数据、加尾部统计、做事前冻结的样本外验证之后，RankIC 从 −0.059 翻到 +0.029，而真正稳的信号藏在崩盘率里。"
+content_source: article.html
+cover_image: cover.jpg
+publish_method: published
+publish_completed: false
+image_source: generated
+default_structure:
+  - 观点文
+default_title_style:
+  - 数字型
+default_format_preset:
+  - 技术
+default_format_scheme:
+  - 蓝
+default_closing_block: []
+default_cover_image_style: []
+default_article_image_style: []
+default_sticker_style: []

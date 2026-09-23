@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from ..contract.errors import fail
+
 __all__ = ['Report', 'build_report']
 
 
@@ -35,6 +37,9 @@ class Report:
     quantile_stats : DataFrame
     turnover : DataFrame
     verdict : Verdict
+    preprocess : list[str]
+        实际执行过的预处理步骤（``preprocess`` 参数的非空子集）。
+        **空列表 = 因子值原封未动** —— 这是可核对的，不靠记忆。
     tail : DataFrame, 可选
         分位 × 持有期的**尾部统计**（均值 / CVaR / 崩盘命中率）。
         与 ``quantiles`` 并排看：均值差可能很小，尾部差却很大。
@@ -55,6 +60,7 @@ class Report:
     quantile_stats: pd.DataFrame = None
     turnover: pd.DataFrame = None
     verdict: object = None
+    preprocess: list = field(default_factory=list)
     tail: pd.DataFrame = None
     crash: pd.DataFrame = None
     health: object = None
@@ -236,6 +242,53 @@ class Report:
         return f'<Report {self.factor_name} · {n} 期 · {v}>'
 
 
+def _apply_preprocess(cr, steps, exposures, groupby):
+    """在**清洗后的可投资截面**上做因子预处理。
+
+    返回 ``(新的 CleanResult, 步骤名列表)``。每一步都通过
+    ``preprocess/`` 里的函数完成 —— 它们会自动把痕迹写进 ``.attrs``。
+    """
+    from .. import preprocess as pp
+
+    allowed = ('winsorize', 'standardize', 'neutralize')
+    bad = [x for x in steps if x not in allowed]
+    if bad:
+        fail('report', 'bad_preprocess',
+             f'preprocess 只支持 {allowed}，收到 {bad}')
+
+    f = cr.data['factor']
+    done = []
+    for st in steps:
+        if st == 'winsorize':
+            f = pp.winsorize(f, method='mad', n=3.0)
+        elif st == 'standardize':
+            f = pp.standardize(f, method='zscore')
+        else:
+            if exposures is None and groupby is None:
+                fail('report', 'neutralize_needs_input',
+                     "preprocess 里有 'neutralize'，但没有给 exposures 或 "
+                     "groupby —— 没有暴露/行业就无从中性化。")
+            if groupby is not None:
+                f = pp.neutralize(f, groups=getattr(groupby, 'df', groupby))
+            else:
+                e = getattr(exposures, 'df', exposures)
+                f = pp.neutralize(f, exposures=e)
+        done.append(st)
+
+    out = cr
+    out.data = cr.data.copy()
+    out.data['factor'] = f.values
+    out.data.attrs['preprocess'] = list(getattr(f, 'attrs', {}).get('preprocess', []))
+    return out, done
+
+
+def _plog(cr):
+    """把预处理痕迹取成 DataFrame（没有就返回 None）。"""
+    import pandas as _pd
+    rows = (getattr(cr.data, 'attrs', {}) or {}).get('preprocess', [])
+    return _pd.DataFrame(rows) if rows else None
+
+
 def _int_cols(df, *cols):
     """把持有期/分位列转成整数 —— 否则会被渲染成 ``1.0000``。"""
     d = df.copy()
@@ -294,7 +347,8 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
                  exposures=None, groupby=None, by=None, sort_method='conditional',
                  model=None, n_trials=None, method='bhy', cost_bps=15.0,
                  name='factor', new_stock_days=60, prepare_tradability=True,
-                 health=True, crash_threshold=None):
+                 health=True, crash_threshold=None, preprocess=None,
+                 warn_unnormalized=True):
     """**一条龙**：数据体检 → 可成交性 → 前向收益 → 清洗 → 分层 → IC → NW → Verdict。
 
     Parameters
@@ -312,6 +366,20 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     health : bool
         默认 ``True``，跑一遍数据体检（防线 2）并把结论带进报告。
         **"数字对不对"之前先回答"数据能不能用"。**
+    preprocess : Sequence[str], optional
+        **因子预处理步骤**（按顺序执行），默认 ``None`` = 不碰因子值。
+        可选：``'winsorize'`` / ``'standardize'`` / ``'neutralize'``。
+
+        ⚠️ **放在清洗之后**：中性化的残差要基于**可投资截面**算 ——
+        清洗前算会把买不进的票也算进回归，残差就偏了。
+
+        ``'neutralize'`` 需要 ``exposures`` 或 ``groupby``，否则报错。
+        例：``preprocess=('winsorize', 'standardize', 'neutralize')``
+    warn_unnormalized : bool
+        默认 ``True``：**给了 ``exposures`` / ``groupby`` 却没做中性化时，在结论里告警**。
+        依据是实测 —— 同一个 ROE 因子，市值中性化前后 RankIC 会**符号翻转**
+        （−0.027 → +0.029），不做中性化可能得出方向相反的结论。
+        这里选择"大声提醒"而不是"偷偷帮你中性化"：改数字必须由使用者决定。
     crash_threshold : float, optional
         "崩盘"的**绝对**门槛（如 ``-0.5`` = 一年腰斩）。
         不给则用当日截面最差 10% 分位作门槛 —— 但**该模式对等规模分组不敏感**
@@ -346,6 +414,10 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     cr = clean(factor, ret, universe=universe, exposures=exposures,
                groupby=groupby, name=name)
 
+    psteps = []
+    if preprocess:
+        cr, psteps = _apply_preprocess(cr, preprocess, exposures, groupby)
+
     ic = information_coefficient(cr)
     q = quantize(cr, n=quantiles, by=by, method=sort_method)
     to = quantile_turnover(q['q'])
@@ -377,10 +449,17 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
                turnover=to.mean(axis=1), cost_bps=cost_bps,
                crash=crash_tbl)
 
+    if warn_unnormalized and not psteps and (exposures is not None
+                                             or groupby is not None):
+        v.warnings.append(
+            '你提供了暴露/行业但**没有做中性化**（preprocess 里没有 '
+            "'neutralize'）。实测同一个 ROE 因子在市值中性化前后 RankIC "
+            '会符号翻转（−0.027 → +0.029）—— 不做中性化可能得出方向相反的结论。')
     return Report(
         factor_name=name, clean=cr, ic=ic,
         ic_summary=ic_summary(ic), nw=newey_west_summary(ic),
         quantiles=quantile_returns(cr, quantiles=q),
         quantile_stats=quantile_stats(cr, quantiles=q),
         turnover=ts, verdict=v, tail=tail_tbl, crash=crash_tbl,
-        health=hp, extra={'long_short': fr})
+        health=hp, preprocess=psteps,
+        extra={'long_short': fr, 'preprocess_log': _plog(cr)})
