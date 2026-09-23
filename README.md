@@ -5,11 +5,13 @@
 它不只算 IC，还要回答 **"这个 IC 可不可信"**。
 
 ```bash
-# 现在就能装（PyPI 发布待办，见 docs/PyPI发布步骤.md）
-pip install "git+https://github.com/yinxiuqu/alphalens-cna.git"
+pip install alphalens-cna            # PyPI 已发布 v0.1.0
 
-# 发布后（名字已确认未被占用）
-pip install alphalens-cna
+# 国内镜像（阿里云/清华）同步新包有延迟，装不到时用官方源：
+pip install -i https://pypi.org/simple/ alphalens-cna
+
+# 或直接从源码装：
+pip install "git+https://github.com/yinxiuqu/alphalens-cna.git"
 ```
 
 核心依赖只有 `numpy / pandas / scipy` —— **不装 matplotlib、不装 seaborn**。

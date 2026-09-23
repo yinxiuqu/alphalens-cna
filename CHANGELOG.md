@@ -6,13 +6,15 @@
 ## [Unreleased]
 
 ### 待办
-- PyPI 正式发布（`alphalens-cna` 名字已确认未被占用，见 `docs/PyPI发布步骤.md`）
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
 
 ## [0.1.0] - 2026-09-22
 
 首个版本。M0（能用）/ M1（可信）完成，M2 进行中。
+
+**已在 PyPI 发布**：`pip install alphalens-cna`（2026-09-23）
+· wheel 139 KB + sdist 158 KB · Apache-2.0 · 依赖仅 numpy/pandas/scipy
 
 ### Added — 核心
 - **契约层**：`FactorPanel` / `PricePanel` / `Tradability` / `Universe` / `Grouping` /
