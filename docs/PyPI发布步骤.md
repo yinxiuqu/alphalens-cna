@@ -1,6 +1,6 @@
 # PyPI 发布步骤（Trusted Publishing，不需要 token）
 
-本仓库已配好 `.github/workflows/release.yml`：**打 tag 即自动发布**。
+本仓库已配好 `.github/workflows/publish.yml`：**创建 GitHub Release 即自动发布**。
 唯一需要人工做的是在 PyPI 网页上登记一次。
 
 `alphalens-cna` 这个名字已确认未被占用（PyPI 返回 404）。
@@ -25,7 +25,7 @@
    | PyPI Project Name | `alphalens-cna` |
    | Owner | `yinxiuqu` |
    | Repository name | `alphalens-cna` |
-   | Workflow name | `release.yml` |
+   | Workflow name | `publish.yml` |
    | Environment name | `pypi` |
 
    填完保存即生效 —— 之后 GitHub Actions 就能用 OIDC 直接发布，
@@ -34,14 +34,17 @@
 ## 二、然后发布（每次发版都这样）
 
 ```bash
-# 1. 改版本号（pyproject.toml 的 version）
-# 2. 更新 CHANGELOG.md
+# 1. 改版本号（pyproject.toml 的 version）并更新 CHANGELOG.md
 git commit -am "release: v0.1.0"
 git tag v0.1.0
 git push origin main --tags
+
+# 2. 在 GitHub 网页上：Releases → Draft a new release
+#    选择 tag v0.1.0 → 填标题 → Publish release
 ```
 
-推送 tag 后 GitHub Actions 会自动：构建 sdist + wheel → 发布到 PyPI。
+**发布 Release 的那一刻**，Actions 会自动：构建 sdist + wheel → `twine check` 门禁
+→ 发到 PyPI。（若 metadata 不合规，会在校验这步失败，**不会**浪费掉版本号。）
 去 <https://pypi.org/project/alphalens-cna/> 看到即成功。
 
 ## 三、发布前自查（本地）
@@ -57,7 +60,7 @@ pip install dist/*.whl --target /tmp/t && \
 ## 四、先练手（可选）
 
 想先验证流程，可发到 **TestPyPI**（独立账号，<https://test.pypi.org/>）：
-在那边同样登记一次 Trusted Publisher，把 `release.yml` 的 `repository-url`
+在那边同样登记一次 Trusted Publisher，把 `publish.yml` 的 `repository-url`
 指向 `https://test.pypi.org/legacy/` 即可。
 
 ## 五、常见坑
@@ -65,5 +68,5 @@ pip install dist/*.whl --target /tmp/t && \
 - **版本号已存在**：PyPI 不允许覆盖，必须 bump 版本
 - **README 渲染失败**：`pyproject.toml` 的 `readme` 指向的文件必须存在且编码 UTF-8
 - **workflow 名字不匹配**：Trusted Publisher 里填的 workflow 文件名必须与
-  `.github/workflows/release.yml` **完全一致**（含后缀）
+  `.github/workflows/publish.yml` **完全一致**（含后缀）
 - **environment 不匹配**：`release.yml` 里写的 `environment: pypi` 要与网页一致

@@ -1,14 +1,17 @@
 name: Publish to PyPI
 
+# 合并说明：保留原有触发方式（创建 GitHub Release），
+# 并补上一道 metadata 校验门禁（校验不过就不发，避免占掉版本号）。
 on:
   release:
     types: [published]   # 发布 GitHub Release 时触发
+  workflow_dispatch:      # 应急手动触发
 
 jobs:
   pypi-publish:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
-    environment: pypi      # 需与 PyPI 配置中的 Environment name 一致（如果填了的话）
+    environment: pypi      # 需与 PyPI 配置中的 Environment name 一致
     permissions:
       id-token: write      # 必须！用于 OIDC 认证
     steps:
@@ -18,8 +21,11 @@ jobs:
           python-version: '3.x'
       - name: Build package
         run: |
-          python -m pip install build
+          python -m pip install --upgrade build twine
           python -m build
+      - name: 校验 metadata
+        # PyPI 不允许覆盖已发布版本 —— 宁可在这里失败，也别把版本号浪费掉
+        run: twine check dist/*
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         # 不需要 password，OIDC 自动认证
