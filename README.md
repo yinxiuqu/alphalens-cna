@@ -4,9 +4,16 @@
 
 它不只算 IC，还要回答 **"这个 IC 可不可信"**。
 
+```bash
+# 现在就能装（PyPI 发布待办，见 docs/PyPI发布步骤.md）
+pip install "git+https://github.com/yinxiuqu/alphalens-cna.git"
+
+# 发布后（名字已确认未被占用）
+pip install alphalens-cna
 ```
-pip install alphalens-cna            # 依赖只有 numpy / pandas / scipy
-```
+
+核心依赖只有 `numpy / pandas / scipy` —— **不装 matplotlib、不装 seaborn**。
+对拍（防线 4）需要 `alphalens-reloaded`，属可选：`pip install "alphalens-cna[compat]"`。
 
 ---
 
