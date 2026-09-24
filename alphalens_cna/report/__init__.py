@@ -239,7 +239,8 @@ class Report:
                           if c in self.tail.columns]
                 tb = _int_cols(self.tail.reset_index()[['h', 'q'] + _tcols],
                                'h', 'q', 'n_crash', 'n')
-                L.append(_md_table(tb))
+                # index=False：已 reset 过，别再 reset（否则多出 index 列）
+                L.append(_md_table(tb, index=False))
                 L.append('')
             L.append(_tail_mode_note(self.crash))
             L.append('')
@@ -265,6 +266,7 @@ class Report:
             '| 字段 | 含义 |', '|---|---|',
             '| `p_adj` | **校正后** p 值 —— 只有它该拿去做决策 |',
             '| `n_trials` | 你一共测过多少个假设。**它决定门槛多高** |',
+            '| `h` | **持有期（交易日）**。全文统一用这个列名 |',
             '| `t_inflation` | 朴素 t 相对 NW t 虚高了几倍 |',
             '| `n_eff` | 有效样本量（启发式）。名义 344 可能只剩 40 |',
             '| `tradable_ratio` | 结论建立在多少可交易样本上 |',
@@ -407,6 +409,14 @@ def _tail_mode_note(crash):
 
 def _md_table(df, index=True):
     d = df.reset_index() if index else df
+    # ★ 统一「持有期」列名。
+    #   同一份报告里它曾有三种叫法：`horizon`（IC/分层）、`index`（NW，索引没命名
+    #   时 pandas 的默认名）、`h`（尾部/稳定性）。同一种东西三个名字，
+    #   读者每换一节都要重新对一遍表头。这里统一成 `h`（见「怎么读这份报告」）。
+    if index and len(d.columns):
+        first = d.columns[0]
+        if first in ('index', 'horizon') and 'h' not in d.columns:
+            d = d.rename(columns={first: 'h'})
     cols = [str(c) for c in d.columns]
     lines = ['| ' + ' | '.join(cols) + ' |', '|' + '---|' * len(cols)]
     for _, row in d.iterrows():

@@ -149,3 +149,28 @@ def test_save_bad_kind_rejected():
     rep = build(n_trials=3)
     with pytest.raises(acna.ContractError):
         rep.save('/tmp/x', kind='nope')
+
+
+def test_hold_period_column_name_is_unified():
+    """★ 第 11 项：全文「持有期」列名必须统一成 `h`。
+
+    此前同一份报告里有三种叫法：`horizon`（IC/分层）、`index`（NW，索引未命名）、
+    `h`（尾部/稳定性）—— 读者每换一节都要重新对表头。
+    """
+    import re
+    md = build(n_trials=3).to_markdown()
+    sec = None
+    seen = {}
+    for line in md.split('\n'):
+        if line.startswith('## '):
+            sec = line[3:].strip()
+            continue
+        if line.startswith('| ') and sec and '---' not in line:
+            first = [c.strip() for c in line.strip('|').split('|')][0]
+            if first in ('index', 'horizon', 'h'):
+                seen.setdefault(first, set()).add(sec[:14])
+    assert 'index' not in seen, f'仍有 pandas 默认列名 index：{seen.get("index")}'
+    assert 'horizon' not in seen, f'仍有 horizon：{seen.get("horizon")}'
+    assert seen.get('h'), '应当用 h 作为持有期列名'
+    # 图例里要解释 h
+    assert '| `h` |' in md and '持有期' in md

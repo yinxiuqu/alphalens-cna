@@ -217,6 +217,8 @@ def newey_west_summary(series, horizons=None, lags=None):
     if 't_naive' in df.columns and 't_nw' in df.columns:
         with np.errstate(divide='ignore', invalid='ignore'):
             df['t_inflation'] = (df['t_naive'] / df['t_nw']).abs()
+    df.index.name = 'h'   # 统一"持有期"列名：渲染时与 IC/分层/尾部一致
+
     return df
 
 

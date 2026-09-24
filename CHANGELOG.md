@@ -16,6 +16,15 @@
   新增 `tests/test_short_sample_errors.py`：钉住不变量 ——
   **极短样本要么跑通，要么报错必须指向根因，绝不允许 KeyError / NaN-Inf 漏出**。
 
+- **同一份报告里「持有期」列有三种叫法** —— `horizon`（四、IC / 六、分层）、
+  `index`（五、Newey-West，因为 `newey_west_summary` 的索引没命名，
+  pandas 一 `reset_index()` 就暴露成默认名）、`h`（七、稳定性 / 八、尾部）。
+  同一种东西三个名字，读者每换一节都要重新对表头。
+  修法：渲染层统一成 **`h`**（一处改动覆盖全部节），
+  源头给 `newey_west_summary` 的索引命名，
+  并在「怎么读这份报告」里补一行图例解释 `h`。
+  顺带补上第 6 项漏掉的第八节第二张表（`tail_by_quantile`）的双 `reset_index`。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
