@@ -217,7 +217,12 @@ def check_adjust_agreement(adj_a, adj_b, tol=1e-6, calendar=None,
     for _, g in m.groupby(level='asset'):
         if len(g) < 2:
             continue
-        d = (g['a'].pct_change() - g['b'].pct_change()).abs().dropna()
+        # 两侧用同一口径（都前值填充）再比收益 —— 手写而非 pct_change()，
+        # 见 analysis/event.py 里的说明：pandas 3.0 会把默认改成不填充并移除该关键字。
+        # 组内已按日期排序，且每组只有一只票，shift(1) 与 pct_change 等价（逐位相同）。
+        _a = g['a'].ffill()
+        _b = g['b'].ffill()
+        d = ((_a / _a.shift(1) - 1) - (_b / _b.shift(1) - 1)).abs().dropna()
         if len(d):
             diff_max = max(diff_max, float(d.max()))
             bad += int((d > tol).sum())

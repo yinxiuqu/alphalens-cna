@@ -92,7 +92,13 @@ def check_extreme_moves(prices, th):
     idx = prices.index[np.asarray(flag)]
     raw_r = r[flag]
     if 'adj_close' in prices.columns:
-        ar = prices['adj_close'].groupby(level='asset').pct_change()[flag]
+        # 这里**要的就是前值填充**（跨停牌区间比），与上面原始收益的口径对齐 ——
+        # 只有同口径才谈得上"复权后是不是也涨这么多"。
+        # 自己 ffill 再自己算，不调 pct_change：它的默认 fill_method 在 2.x 会告警，
+        # 3.0 起默认改成**不填充**（语义会悄悄反过来），关键字本身也会被移除。
+        # 手写 `s/s.shift(1)-1` 与旧默认逐位相同（已用 8000 点含大量 NaN 的面板核对）。
+        _adj = prices['adj_close'].groupby(level='asset').ffill()
+        ar = (_adj / _adj.groupby(level='asset').shift(1) - 1)[flag]
     else:
         ar = pd.Series(np.nan, index=idx)
     detail = pd.DataFrame({

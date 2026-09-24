@@ -137,10 +137,13 @@ def align_event_windows(prices, events, calendar, *, window=DEFAULT_WINDOW,
              f'base_day={base_day} 必须落在 window={window} 内')
 
     cal = pd.DatetimeIndex(getattr(calendar, 'index', calendar))
-    # ⚠️ 必须显式 ``fill_method=None``：pandas 的 pct_change 默认**前值填充**，
+    # ⚠️ 停牌必须如实留 NaN：pandas 的 pct_change 默认**前值填充**，
     #    会把停牌日伪装成"0 收益"，于是窗口看着完整、其实中间停了两周。
-    #    置 None 后停牌 → NaN → 该事件按 `missing_price` 剔除，如实记账。
-    ret = px[price_col].groupby(level='asset').pct_change(fill_method=None)
+    #    这里自己算，保证"永不填充"的语义。
+    #    注意**别改写成 `pct_change(fill_method=None)`**：那个关键字 pandas 3.0 已移除，
+    #    写了现在能用、到 3.0 直接 TypeError。（手写式与它逐位相同，已核对。）
+    _p = px[price_col]
+    ret = _p / _p.groupby(level='asset').shift(1) - 1
     pos_of = pd.Series(np.arange(len(cal)), index=cal)
 
     bret = None
@@ -156,7 +159,12 @@ def align_event_windows(prices, events, calendar, *, window=DEFAULT_WINDOW,
             bser = pd.Series(np.asarray(benchmark).ravel(),
                              index=pd.DatetimeIndex(
                                  getattr(benchmark, 'index', cal)))
-        bret = bser.sort_index().pct_change().reindex(cal)
+        # 基准是**指数**：缺值是数据空洞，不是停牌 → 前值填充后算收益
+        # （与上面个股"永不填充"的口径相反，这是有意的：个股停牌污染窗口该剔除，
+        #  指数缺值跨过去才是真实的市场收益）。
+        # 显式写出来，免得 pandas 3.0 把默认从填充悄悄改成不填充。
+        _b = bser.sort_index().ffill()
+        bret = (_b / _b.shift(1) - 1).reindex(cal)
 
     rel_days = np.arange(lo, hi + 1)
     rows, keep, dropped = [], 0, {'not_on_calendar': 0, 'missing_price': 0,

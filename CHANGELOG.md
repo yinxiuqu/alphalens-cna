@@ -5,6 +5,20 @@
 
 ## [Unreleased]
 
+### 修复
+- **pandas 3.0 兼容**（全量回归里冒出的 2 类弃用告警；**数值零变化**，已逐位核对）：
+  - `pct_change()` 的默认前值填充，涉及 4 个调用点（`health/prices.py`、
+    `analysis/event.py` 两处、`contract/validate.py`）。改为自己 `ffill` 后手写
+    `s / s.shift(1) - 1`：既不告警，也不依赖 `fill_method` 关键字 ——
+    该关键字 pandas 3.0 已移除，`event.py` 里原有的 `pct_change(fill_method=None)`
+    届时会直接 `TypeError`（本次一并拆掉）。
+    ⚠️ 别照抄"写成 `fill_method=None`"：那会**改变语义**（不复权归因要的正是跨停牌区间比）。
+  - 对象列 `fillna` 的向下转型告警（`engine/clean.py` 的 universe / exposures 两处）。
+    ⚠️ 也**不能**照抄提示里的 `result.infer_objects(copy=False)` —— 告警由 `fillna`
+    自己发出，追加它一条都不会少（实测）。改用 `.where(notna(), 填充值)`。
+  - 清掉 `build/lib/`、`.pypi_test/`、`.pylibs/alphalens_cna` 三份整包副本：
+    它们含旧代码，会让 `grep` 扫出假命中，也会在"不在仓库根跑"时被静默用上。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

@@ -271,7 +271,13 @@ def clean(factor, returns, *, tradability=None, universe=None,
     if universe is not None:
         u = _unwrap(universe)
         col = 'in_universe' if 'in_universe' in u.columns else u.columns[0]
-        inside = u[col].reindex(base.index).fillna(False).astype(bool)
+        # ⚠️ 不要写 ``.fillna(False)``：对象列上的 fillna 在 pandas 2.2+ 会告警
+        #    （"Downcasting object dtype arrays on .fillna is deprecated"），
+        #    而**追加 `.infer_objects(copy=False)` 并不能消掉它** —— 告警由 fillna
+        #    自己发出，它不知道后面跟了什么（实测过）。
+        #    `.where(notna(), False)` 值完全相同、零告警，再 astype(bool) 拿回 bool dtype。
+        _u = u[col].reindex(base.index)
+        inside = _u.where(_u.notna(), False).astype(bool)
         drop('not_in_universe', ~inside.values)
 
     # ⑥ 分组 / 控制变量缺失
@@ -280,7 +286,10 @@ def clean(factor, returns, *, tradability=None, universe=None,
         drop('no_group', g.iloc[:, 0].reindex(base.index).isna().values)
     if exposures is not None:
         e = _unwrap(exposures)
-        drop('no_exposure', e.isna().any(axis=1).reindex(base.index).fillna(True).values)
+        # reindex 一引入缺失，bool 就会被提升成 object —— 同一条 fillna 告警的另一个入口
+        # （测试者报的 274/283 就是这两处）。同样用 where 绕开，值不变。
+        _ex = e.isna().any(axis=1).reindex(base.index)
+        drop('no_exposure', _ex.where(_ex.notna(), True).astype(bool).values)
 
     # ── 组装输出 ─────────────────────────────────────────────────
     cols = ['factor'] + ret_cols
