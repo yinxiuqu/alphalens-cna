@@ -70,7 +70,9 @@ def _as_array(p):
     if not np.all(np.isfinite(a)):
         fail('multiplicity', 'nan_p',
              'p 值里有 NaN/Inf —— 多重检验无法在有缺失时进行。\n'
-             '  修法：先把算不出 p 的检验剔掉，但**n（测了多少次）仍要算进去**。')
+             '  最可能的原因不是 p 值本身，而是**上游样本不足**：'
+             '持有期超过样本跨度、或期数太少导致 t 算不出来。\n'
+             '  先看 clean() 的台账与 IC 面板，再回来做校正。')
     if np.any((a < 0) | (a > 1)):
         fail('multiplicity', 'p_range', f'p 值必须落在 [0,1]，收到 {a.min()}~{a.max()}')
     return a

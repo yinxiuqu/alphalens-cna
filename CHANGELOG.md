@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+- **极短样本仍漏出下游报错**（用户反馈：第 7 项"只修了一半"）——
+  2~3 期时抛的是 `multiplicity/nan_p: p 值里有 NaN/Inf`，
+  提示让人"剔除算不出 p 的检验"，而真正该做的是**缩短持有期**；用户拿到这条信息
+  仍然不知道问题在哪。另外 `ic_summary(pd.DataFrame())` 直接漏
+  `KeyError: "None of ['horizon'] are in the columns"`。
+  修法：在 **`assess` 入口加前置判断**（IC 无列 / 全 NaN → 明确报"样本不足以判断"
+  并列出三种常见原因 + 台账排查路径）；`ic_summary` 加同样的守卫；
+  `multiplicity` 的 `nan_p` 提示补上"最可能的原因不是 p 值本身，而是上游样本不足"。
+  新增 `tests/test_short_sample_errors.py`：钉住不变量 ——
+  **极短样本要么跑通，要么报错必须指向根因，绝不允许 KeyError / NaN-Inf 漏出**。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

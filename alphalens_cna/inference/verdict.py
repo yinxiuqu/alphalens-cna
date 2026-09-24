@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from ..contract.errors import fail
 import pandas as pd
 
 from . import multiplicity as mult
@@ -164,6 +165,22 @@ def assess(estimates=None, *, ic=None, returns=None, turnover=None,
     -------
     Verdict
     """
+    # ★ 入口前置判断：IC 全空或没有任何有限值 —— 必须在下游（多重检验）
+    #   之前拦住，否则用户拿到的是 "p 值里有 NaN/Inf"，那信息对他毫无用处。
+    if ic is not None:
+        _ic = pd.DataFrame(getattr(ic, 'data', ic))
+        if not len(_ic.columns):
+            fail('verdict', 'empty_ic',
+                 'IC 面板是空的（没有任何持有期列）—— 没有可判断的东西。\n'
+                 '  排查：看 clean() 的台账；若有效观测为 0，多半是**持有期超过样本跨度**'
+                 '（如月频价格却要 63 个交易日的前向收益），缩短 horizons 即可。')
+        _v = _ic.to_numpy(dtype=float)
+        if not np.isfinite(_v).any():
+            fail('verdict', 'all_nan_ic',
+                 f'IC 全是 NaN（{_ic.shape[0]} 期 × {_ic.shape[1]} 个持有期）—— 样本不足以判断。\n'
+                 '  常见原因：① 期数太少（每个截面算不出相关）；'
+                 '② 持有期超过样本跨度；③ 因子在截面上是常数。\n'
+                 '  排查：看 clean() 的台账，或缩短 horizons。')
     ests = _collect(estimates, ic, n_trials, method, horizon)
     v = Verdict(estimates=ests, n_trials=int(n_trials or 0),
                 method=method if n_trials else 'none', ledger=ledger,

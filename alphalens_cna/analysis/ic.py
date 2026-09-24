@@ -136,6 +136,11 @@ def ic_summary(ic, horizons=None):
     （动量因子 t 从 −21.93 修到 −6.76）。
     **要下结论请走 ``inference/`` 的 Newey-West 修正。**
     """
+    if ic is None or not isinstance(ic, pd.DataFrame) or not len(ic.columns):
+        fail('ic', 'empty_ic',
+             '收到空的 IC 面板，无法汇总。\n'
+             '  通常是上游一条有效观测都没有 —— 看 clean() 的台账（每类剔除多少条），'
+             '或缩短 horizons（持有期可能超过样本跨度）。')
     ic = _unwrap(ic)
     if horizons is not None:
         ic = ic[[h for h in ic.columns if h in set(horizons)]]
