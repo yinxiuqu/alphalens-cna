@@ -99,7 +99,15 @@ class DropLedger:
             df.loc[len(df)] = {'reason': '—— 保留 ——', 'count': self.n_output,
                                'pct': (self.n_output / self.n_input * 100)
                                       if self.n_input else np.nan,
-                               'meaning': '进入分析', 'sample': []}
+                               'meaning': '进入分析', 'sample': ''}
+        if len(df):
+            # ★ `sample` 是给人看的（形如 "[(Timestamp(...), '301277'), ...]"）。
+            #   保持 object 列会让整张表**无法写成 parquet**
+            #   （ArrowTypeError），于是存盘目录里出现"14 张 parquet + 1 张 csv"
+            #   的格式混杂。转成字符串后 15 张表格式统一，报告渲染不变。
+            df['sample'] = df['sample'].map(
+                lambda v: '' if v is None or (isinstance(v, (list, tuple)) and not len(v))
+                else str(v))
         return df
 
     def __str__(self):

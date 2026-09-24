@@ -25,6 +25,13 @@
   并在「怎么读这份报告」里补一行图例解释 `h`。
   顺带补上第 6 项漏掉的第八节第二张表（`tail_by_quantile`）的双 `reset_index`。
 
+- **`ledger` 表无法写成 parquet** —— 它的 `sample` 列装 Python 元组，
+  整张表触发 `ArrowTypeError`，于是 `save(kind='frames')` 存出
+  "14 张 parquet + 1 张 csv" 的**格式混杂**目录。
+  `sample` 本来就是给人看的字符串，改为在 `DropLedger.to_frame()` 里 `str()` 化。
+  修后 15 张表**全部 parquet、零降级**，报告渲染不变。
+  （这一条是上一项 `save_report` 报出来的 —— 修之前它是静默降级，根本看不见。）
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
