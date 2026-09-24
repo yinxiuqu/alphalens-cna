@@ -32,6 +32,20 @@
 - **第七、八节表格多出 `index` 列** —— 调用处已 `reset_index` 过，
   `_md_table` 内部又 reset 一次，于是多出一列 0/1 与 `h` 重复。改为 `index=False`。
 
+- **空样本抛 pandas 原始异常** —— 持有期超过样本跨度时（如月频价格却要 63 个
+  *交易日*的前向收益），清洗后一条不剩，`information_coefficient` 抛的是
+  `ValueError: If using all scalar values, you must pass an index` —— 用户完全看不懂。
+  改为 `ContractError` 并说明原因与排查方法（看 `clean()` 台账 / 缩短 horizons）。
+- **设计文档承诺的 L2 流水线 API 没导出** —— 文档写 `acna.forward_returns(...)`，
+  实际必须写 `from alphalens_cna.engine.returns import forward_returns`。
+  `forward_returns` / `clean` / `ReturnModel` / `compute_tradability` /
+  `compute_adj_factor` 五个核心函数**都不在 `__all__` 里**。
+  根因：`engine/__init__.py` 当时只有一行 docstring、没有任何再导出。
+  另补齐 11 个"可取到但漏在 `__all__` 外"的名字（事件研究 / 尾部统计）。
+  ★ 并新增 `tests/test_api_surface.py`：按**设计文档承诺的清单**逐项断言。
+  这类问题用"查 `__all__` 是否可取到"的方法**查不出来** —— 用户审计了全部
+  88 项只发现 1 个，而这 5 个核心函数一个都没被看到。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

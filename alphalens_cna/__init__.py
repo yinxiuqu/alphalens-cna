@@ -102,6 +102,13 @@ from .inference import (
     t_threshold,
     to_frame,
 )
+from .engine import (
+    ReturnModel,
+    clean,
+    compute_adj_factor,
+    compute_tradability,
+    forward_returns,
+)
 from .contract import (
     Calendar,
     ContractError,
@@ -138,6 +145,10 @@ __all__ = [
     'information_coefficient', 'ic_summary', 'ic_decay',
     'rank_autocorrelation', 'quantile_turnover',
     'cross_sectional_regression', 'fama_macbeth', 'FMResult',
+    # 事件研究与尾部统计（此前可取到但漏在 __all__ 外 —— 同一类不一致）
+    'align_event_windows', 'event_summary', 'event_path_by_group',
+    'tail_by_quantile', 'crash_spread', 'cvar', 'value_at_risk',
+    'expected_shortfall', 'downside_deviation', 'tail_ratio', 'crash_stats',
     'shanken_inflation',
     'quantize', 'quantile_returns', 'quantile_stats',
     'double_sort', 'monotonicity_test',
@@ -164,6 +175,9 @@ __all__ = [
     # 契约
     'Calendar',
     'ContractError',
+    # L2 显式流水线（设计文档承诺的 acna.xxx 写法）
+    'forward_returns', 'clean', 'ReturnModel',
+    'compute_tradability', 'compute_adj_factor',
     'FactorPanel',
     'PricePanel',
     'Tradability',

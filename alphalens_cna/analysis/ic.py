@@ -83,13 +83,28 @@ def information_coefficient(data, horizons=None, method='spearman'):
     if 'factor' not in df.columns:
         fail('ic', 'no_factor', f'缺 `factor` 列；实际列：{list(df.columns)[:12]}')
 
+    if not len(df):
+        # ★ 不许把"没有样本"报成 pandas 的 ValueError（用户看不懂）。
+        #   实测触发场景：14 个月末价格却要 63 个**交易日**的前向收益 ——
+        #   持有期超过样本跨度 → 前向收益全空 → 清洗后一条不剩。
+        fail('ic', 'no_obs',
+             '清洗后一条有效观测都没有，算不出 IC。\n'
+             '  常见原因：① 持有期超过样本跨度（如月频价格却要 63 个交易日的前向收益）；'
+             '② 全部样本被成交规则剔除。\n'
+             '  排查：看 clean() 的台账（每类剔除了多少条），或缩短 horizons。')
     g = df.groupby(level='date')
     out = {}
     for c in cols:
         out[horizon_of(c)] = g.apply(
             lambda x, c=c: _corr(x['factor'].values, x[c].values, method),
             include_groups=False)
-    res = pd.DataFrame(out).sort_index()
+    try:
+        res = pd.DataFrame(out).sort_index()
+    except ValueError as e:                                      # noqa: BLE001
+        fail('ic', 'degenerate',
+             f'IC 面板构造失败：{e}\n'
+             f'  通常是各持有期的有效观测为空 —— 检查 horizons 是否超过样本跨度；'
+             f'剔除明细见 clean() 的 ledger。')
     res.columns.name = 'horizon'
     return res
 
