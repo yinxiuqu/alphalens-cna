@@ -44,3 +44,7 @@ wechat_send.py
 aws.env
 .aws-article/
 drafts/
+
+# ── PyPI 安装验证用的隔离目录
+.pypi_test/
+.pypi_test_scripts/
