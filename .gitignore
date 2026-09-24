@@ -46,5 +46,5 @@ aws.env
 drafts/
 
 # ── PyPI 安装验证用的隔离目录
-.pypi_test/
+.pypi_test*/
 .pypi_test_scripts/
