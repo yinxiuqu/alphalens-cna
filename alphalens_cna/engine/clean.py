@@ -43,6 +43,41 @@ REASON_TEXT = {
 }
 
 
+def _fmt_sample(v, max_items=3):
+    """把剔除样本的 ``[(日期, 代码), ...]`` 排成人话。
+
+    修前是 ``str(list)`` —— 公众号报告里直接出现
+    ``[(Timestamp('2023-01-31 00:00:00'), '000000'), ...]`` 这种 Python repr，
+    能看但对读者不友好。
+
+    >>> _fmt_sample([(pd.Timestamp('2023-01-31'), '000000'), (pd.Timestamp('2023-02-28'), '000001')])
+    '2023-01-31 000000; 2023-02-28 000001'
+    """
+    if v is None:
+        return ''
+    if not isinstance(v, (list, tuple, set)):
+        return str(v)
+    items = list(v)
+    if not items:
+        return ''
+    parts = []
+    for it in items[:max_items]:
+        if isinstance(it, (tuple, list)) and len(it) == 2:
+            d, a = it
+            try:
+                ds = '—' if pd.isna(d) else pd.Timestamp(d).strftime('%Y-%m-%d')
+            except Exception:                                    # noqa: BLE001
+                ds = str(d)
+            parts.append(f'{ds} {a}')
+        else:
+            parts.append(str(it))
+    out = '; '.join(parts)
+    if len(items) > max_items:
+        out += f' …（共 {len(items)} 条）'
+    return out
+
+
+
 # --------------------------------------------------------------------------- #
 @dataclass
 class DropLedger:
@@ -105,9 +140,7 @@ class DropLedger:
             #   保持 object 列会让整张表**无法写成 parquet**
             #   （ArrowTypeError），于是存盘目录里出现"14 张 parquet + 1 张 csv"
             #   的格式混杂。转成字符串后 15 张表格式统一，报告渲染不变。
-            df['sample'] = df['sample'].map(
-                lambda v: '' if v is None or (isinstance(v, (list, tuple)) and not len(v))
-                else str(v))
+            df['sample'] = df['sample'].map(_fmt_sample)
         return df
 
     def __str__(self):

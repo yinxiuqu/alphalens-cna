@@ -239,3 +239,20 @@ def test_accepts_contract_objects():
 
 if __name__ == '__main__':
     sys.exit(pytest.main([__file__, '-q']))
+
+
+def test_sample_column_is_human_readable():
+    """★ 第十节「剔除明细」的 sample 列不许出现 Python repr。
+
+    修前是 str(list) → 公众号报告里直接出现
+    ``[(Timestamp('2023-01-31 00:00:00'), '000000'), ...]``。
+    """
+    import pandas as pd
+    from alphalens_cna.engine.clean import _fmt_sample
+    d = pd.bdate_range('2023-01-31', periods=6, freq='ME')
+    s = _fmt_sample(list(zip(d, [f'{i:06d}' for i in range(6)])))
+    assert 'Timestamp(' not in s and '[' not in s
+    assert s.startswith('2023-01-31 000000')
+    assert '共 6 条' in s                      # 超长截断并说明总数
+    assert _fmt_sample([]) == '' and _fmt_sample(None) == ''
+    assert _fmt_sample('原样') == '原样'        # 非列表原样返回
