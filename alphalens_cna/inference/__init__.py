@@ -29,6 +29,15 @@ from .multiplicity import (
     t_threshold,
     to_frame,
 )
+from .deflated import (
+    DSRResult,
+    dsr,
+    expected_max_sharpe,
+    min_track_record_length,
+    psr,
+    sharpe_variance_estimate,
+)
+from .stability import decay_test, subsample_stability
 from .rank_entropy import (
     rank_entropy,
     rank_entropy_series,
@@ -62,4 +71,7 @@ __all__ = [
     'rank_entropy', 'rank_entropy_series', 'rank_stability',
     'rank_entropy_summary',
     'perturb_series', 'pfs', 'robustness_report', 'MODES',
+    'dsr', 'psr', 'DSRResult', 'expected_max_sharpe',
+    'min_track_record_length', 'sharpe_variance_estimate',
+    'subsample_stability', 'decay_test',
 ]

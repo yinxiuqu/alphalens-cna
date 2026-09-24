@@ -60,9 +60,9 @@ def test_frames_are_tidy():
 def test_markdown_contains_key_sections():
     md = build(n_trials=12).to_markdown()
     for s in ('# demo 因子分析报告', '## 一、结论', '## 二、数据体检',
-              '## 三、样本账', '## 四、IC',
-              '## 五、Newey-West', '## 六、分层', '## 七、尾部风险',
-              '## 八、换手与成本', '## 九、剔除明细',
+              '## 三、样本账', '## 四、IC', '## 五、Newey-West',
+              '## 六、分层', '## 七、因子衰减与稳定性', '## 八、尾部风险',
+              '## 九、换手与成本', '## 十、剔除明细',
               '怎么读这份报告'):
         assert s in md, s
     assert 'n_trials' in md and 'p_adj' in md

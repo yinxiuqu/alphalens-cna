@@ -40,6 +40,13 @@ class Report:
     preprocess : list[str]
         实际执行过的预处理步骤（``preprocess`` 参数的非空子集）。
         **空列表 = 因子值原封未动** —— 这是可核对的，不靠记忆。
+    stability_detail : dict
+        每个持有期的**子样本一致性**与**衰减斜率**（因子失效监控）。
+        键为持有期，值为 ``stability`` / ``chunk_means`` / ``slope`` /
+        ``t_slope`` / ``decaying`` / ``half_life``。
+    dsr : DSRResult, 可选
+        **紧缩夏普比率** —— 扣掉"挑过 n_trials 个组合"的选择偏差后的夏普。
+        不做组合筛选时它退化为 PSR；做了筛选却不校正，就是把运气当本事。
     tail : DataFrame, 可选
         分位 × 持有期的**尾部统计**（均值 / CVaR / 崩盘命中率）。
         与 ``quantiles`` 并排看：均值差可能很小，尾部差却很大。
@@ -61,9 +68,11 @@ class Report:
     turnover: pd.DataFrame = None
     verdict: object = None
     preprocess: list = field(default_factory=list)
+    stability_detail: dict = field(default_factory=dict)
     tail: pd.DataFrame = None
     crash: pd.DataFrame = None
     health: object = None
+    dsr: object = None
     extra: dict = field(default_factory=dict)
 
     # -- tidy 输出 ----------------------------------------------------------
@@ -80,6 +89,9 @@ class Report:
                        if self.clean is not None else None),
             'verdict': (self.verdict.to_frame()
                         if self.verdict is not None else None),
+            'stability': (pd.DataFrame(self.stability_detail).T
+                          if self.stability_detail else None),
+            'dsr': (self.dsr.to_frame() if self.dsr is not None else None),
             'tail': self.tail,
             'crash': self.crash,
             'health': (pd.DataFrame([{'项目': f.name, '严重度': f.severity,
@@ -165,8 +177,33 @@ class Report:
                      '接近 ±1 才算"单调"；两端清晰、中间乱序说明因子定义可能有问题。')
             L.append('')
 
+        if self.stability_detail:
+            L.append('## 七、因子衰减与稳定性')
+            L.append('')
+            L.append('> **这是"因子是不是在失效"的判据**，和 IC 高低是两件事。')
+            L.append('> `稳定性` = 连续子段与全样本同号的比例；'
+                     '`斜率 t` 显著为负即为**衰减**（用 Newey-West，不是朴素 t）。')
+            L.append('')
+            st = pd.DataFrame(self.stability_detail).T
+            st.index.name = 'h'
+            # 百分比显示：既好读，也避免 1.0 被渲染成 1.0000
+            st['稳定性'] = [f'{v:.0%}' if pd.notna(v) else '—'
+                            for v in st['stability']]
+            st = st[['稳定性', 'slope', 't_slope', 'decaying', 'half_life']]
+            st.columns = ['稳定性', '斜率/期', '斜率 t(NW)', '是否衰减', '半衰期(期)']
+            L.append(_md_table(_int_cols(st.reset_index(), 'h')))
+            L.append('')
+            if self.dsr is not None:
+                L.append('### 紧缩夏普比率（DSR）')
+                L.append('')
+                L.append('```')
+                L.append(str(self.dsr))
+                L.append('```')
+                L.append('')
+            L.append('')
+
         if self.crash is not None and len(self.crash):
-            L.append('## 七、尾部风险')
+            L.append('## 八、尾部风险')
             L.append('')
             L.append('> **均值与 IC 看不见的那一块。** 秩相关度量的是全样本成对单调性，'
                      '一团挤在"双低角"的样本彼此同序，会把 ρ 往正方向拉 —— '
@@ -194,13 +231,13 @@ class Report:
             L.append('')
 
         if self.turnover is not None and len(self.turnover):
-            L.append('## 八、换手与成本')
+            L.append('## 九、换手与成本')
             L.append('')
             L.append(_md_table(self.turnover))
             L.append('')
 
         if self.clean is not None and getattr(self.clean, 'ledger', None):
-            L.append('## 九、剔除明细')
+            L.append('## 十、剔除明细')
             L.append('')
             L.append(_md_table(self.clean.ledger.to_frame().set_index('reason'),
                                index=True))
@@ -443,11 +480,38 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         hp = _health_check(prices=px, factor=getattr(factor, 'df', factor),
                            tradability=trad, calendar=calendar, name=name)
 
+    from ..inference.stability import decay_test, subsample_stability
+    from ..inference.deflated import dsr as _dsr
+
     fr = factor_returns(cr, quantiles=q)
+    fr0 = fr[fr.columns[0]] if len(fr.columns) else None
+
+    # ── 因子失效监控：子样本一致性 + 衰减斜率（按持有期逐一看，不挑最好的）──
+    stab = {}
+    for hz in ic.columns:
+        ser = ic[hz].dropna()
+        st = subsample_stability(ser)
+        dc = decay_test(ser, horizon=int(hz))
+        stab[int(hz)] = {'stability': st['stability'],
+                         'chunk_means': st['chunk_means'],
+                         'slope': dc['slope'], 't_slope': dc['t_nw'],
+                         'decaying': dc['decaying'],
+                         'half_life': dc['half_life']}
+    # Verdict.stability 取**主持有期**（与 assess 取 ests[0] 一致，不挑最大）
+    main_h = int(ic.columns[0]) if len(ic.columns) else None
+    stab_main = stab.get(main_h, {}).get('stability') if main_h else None
+
+    # ── DSR：扣掉"挑过 N 个组合"的选择偏差 ──
+    dsr_res = None
+    if fr0 is not None and len(fr0.dropna()) >= 20:
+        try:
+            dsr_res = _dsr(fr0.dropna(), n_trials=int(n_trials or 1))
+        except Exception:                                        # noqa: BLE001
+            dsr_res = None
     v = assess(ic=ic, n_trials=n_trials, method=method, ledger=cr.ledger,
                returns=(fr[fr.columns[0]] if len(fr.columns) else None),
                turnover=to.mean(axis=1), cost_bps=cost_bps,
-               crash=crash_tbl)
+               crash=crash_tbl, stability=stab_main)
 
     if warn_unnormalized and not psteps and (exposures is not None
                                              or groupby is not None):
@@ -461,5 +525,5 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         quantiles=quantile_returns(cr, quantiles=q),
         quantile_stats=quantile_stats(cr, quantiles=q),
         turnover=ts, verdict=v, tail=tail_tbl, crash=crash_tbl,
-        health=hp, preprocess=psteps,
+        health=hp, preprocess=psteps, stability_detail=stab, dsr=dsr_res,
         extra={'long_short': fr, 'preprocess_log': _plog(cr)})

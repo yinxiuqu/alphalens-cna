@@ -11,6 +11,7 @@ from .ic import (
     quantile_turnover,
     rank_autocorrelation,
     return_cols,
+    rolling_ic,
 )
 from .portfolio import (
     cumulative_returns,
@@ -51,7 +52,7 @@ from .quantile import (
 
 __all__ = [
     'information_coefficient', 'ic_summary', 'ic_decay',
-    'rank_autocorrelation', 'quantile_turnover', 'return_cols',
+    'rank_autocorrelation', 'quantile_turnover', 'return_cols', 'rolling_ic',
     'quantize', 'quantile_returns', 'quantile_stats',
     'double_sort', 'monotonicity_test',
     'factor_returns', 'cumulative_returns', 'portfolio_summary',

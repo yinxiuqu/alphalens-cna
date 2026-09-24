@@ -270,3 +270,31 @@ def _unwrap(obj):
         return obj
     fail('ic', 'bad_input',
          f'需要 DataFrame / Series / 清洗结果，收到 {type(obj).__name__}')
+
+def rolling_ic(data, window=252, horizons=None, method='spearman',
+               min_periods=None):
+    """**滚动 IC** —— 跨时间的 IC 路径（因子失效监控的输入端）。
+
+    ⚠️ 与 :func:`ic_decay` 的区别：``ic_decay`` 是**跨持有期**的衰减（选调仓频率），
+    本函数是**跨时间**的滚动（看因子有没有失效）。名字像，用途不同。
+
+    Parameters
+    ----------
+    data : CleanResult | DataFrame
+    window : int
+        滚动窗口（期数）。月频面板上 ``window=24`` 就是两年。
+    min_periods : int, optional
+        默认 ``max(10, window // 4)`` —— 少于这个数不给值，不硬凑。
+
+    Returns
+    -------
+    DataFrame
+        index = 日期，columns = 持有期；值为窗口内的 **IC 均值**。
+        想看波动就自己对它再 rolling；想看衰减就喂给
+        :func:`alphalens_cna.inference.decay_test`。
+    """
+    ic = information_coefficient(data, horizons=horizons, method=method)
+    if window < 2:
+        fail('ic', 'bad_window', f'window 必须 >= 2，收到 {window}')
+    mp = min_periods if min_periods is not None else max(10, window // 4)
+    return ic.rolling(window, min_periods=mp).mean()

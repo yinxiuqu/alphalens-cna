@@ -70,10 +70,16 @@ from .health import Finding, HealthReport
 from .health import check as health_check
 from .report import Report, build_report
 from .inference import (
+    DSRResult,
     Estimate,
     Verdict,
+    decay_test,
+    dsr,
+    min_track_record_length,
     pfs,
     perturb_series,
+    psr,
+    subsample_stability,
     rank_entropy,
     rank_entropy_summary,
     rank_stability,
@@ -134,6 +140,8 @@ __all__ = [
     'preprocess_log',
     'rank_entropy', 'rank_stability', 'rank_entropy_summary',
     'pfs', 'perturb_series', 'robustness_report',
+    'dsr', 'psr', 'DSRResult', 'min_track_record_length',
+    'subsample_stability', 'decay_test', 'rolling_ic',
     # 报告
     'build_report', 'Report',
     # 推断 ★

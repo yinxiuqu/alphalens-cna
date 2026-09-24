@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+### Added（补齐两个洞）
+- **`inference/deflated.py`：DSR 紧缩夏普比率** —— 补齐"多重检验只治了一半"：
+  `multiplicity` 治 t 值，**DSR 治"挑组合挑出来的夏普"**。含
+  `psr` / `dsr` / `expected_max_sharpe` / `min_track_record_length`。
+  N 可直接取自 `ResearchLedger.n_trials()` —— 这正是多数人算不出 DSR 的原因。
+  实测效果：年化夏普 0.99、PSR=0.827 的策略，在"挑过 2850 个组合"下
+  **DSR=0.005**（纯噪声下期望最大夏普 0.2308，比它还高）。
+- **`inference/stability.py`：因子失效监控** —— `subsample_stability`
+  （连续子段与全样本同号的比例）+ `decay_test`（衰减斜率，Newey-West 标准误）。
+  **接上了此前悬空的 `Verdict.stability`** —— 该字段一直存在、报告也会渲染成
+  "稳定性 X% 子样本成立"，但全库没有任何地方计算它，永远显示 NaN。
+- **`analysis.rolling_ic()`** —— 跨**时间**的滚动 IC。
+  （与跨**持有期**的 `ic_decay` 是两件事，docstring 已写明区别。）
+- 报告新增「七、因子衰减与稳定性」一节（共十节）；
+  `Report.stability_detail` / `Report.dsr`；`frames()` 新增 `stability` / `dsr`。
+
+### Fixed
+- `decay_test` 的 HAC 标准误最初写成 `S / sxx`，正确是 `T·S / sxx²`
+  （`X'X` 对角化后 `Var(β)=Ŝ₂₂/sxx²`，而 `nw_variance` 返回的是已除 T−1 的**平均**量）。
+  自检方式：同方差下必须退化为经典 `σ²/Σtc²` —— 修前 t=−0.50、修后 −37.28，
+  与经典公式差 3.9%（那 3.9% 正是自相关修正）。
+- 稳定性表改为百分比显示：`1.0` 原先被渲染成 `1.0000`。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
