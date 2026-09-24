@@ -5,6 +5,33 @@
 
 ## [Unreleased]
 
+### Fixed（修掉 6 个缺陷：3 个来自用户反馈，3 个从产物反查）
+- **`rolling_ic` 顶层导不出** —— 名字写进了 `__all__` 却漏了 import 块。
+  后果分两层：`acna.rolling_ic` 报 AttributeError；
+  **`from alphalens_cna import *` 直接抛异常** —— 星号导入的 notebook 一升级就炸。
+  审计 88 项 `__all__`，只有这一个取不到。
+  ★ 顺带补上一道**自省式防线**测试：`__all__` 里每个名字都必须真的取得到。
+  325 个测试当初一个都没抓到，说明缺的就是这类测试。
+- **`__version__` 硬编码 `'0.1.0.dev0'`** —— 发行元数据说 0.1.1、运行时自报 0.1.0.dev0。
+  改为 `importlib.metadata.version('alphalens-cna')` + 取不到时回退。
+- **复权连续性假阳性** —— `health/prices.py` 用绝对容差 `d < -1e-12`，
+  而 `adj_factor` 常以 10 位小数存储，舍入本身就有 ~1e-10，
+  于是纯舍入被**判成硬错误**，让整个体检结论不可信。
+  改为相对容差（`ADJ_REL_TOL = 1e-8`）。
+  （同一类问题早前在 `engine/adjust.py` 的 `check_adjust_agreement` 修过，这里漏了一处。）
+- **第七节在短样本上整节失效** —— `subsample_stability` 要求 `n_splits × min_obs = 20`、
+  `decay_test` 要求 `n >= 20`，而 14 期月频面板是常见规模，于是整节渲染成全破折号。
+  门槛降到 5 / 8（2 段各 7 期、回归 2 参数 14 点，本来就够算）。
+  ★ 更关键：**算不出来时 `decaying` 改为 `None`**（渲染成"—"），不再返回 `False`。
+  `False` 的含义是"检验过、没衰减"，而那是"根本没检验" ——
+  把未检验报成已检验且通过，正是本库一路在抓的那类错误。
+- **`auto_lags` 的 `horizon-1` 下限在短序列上撑爆** —— 14 期 + h=63 → 下限 62 阶
+  → 被截到 `T-2=12`，等于用 14 个点估 12 阶自协方差，由此算出的 `vif`/`n_eff` 全是垃圾。
+  加比例上限 `lags ≤ max(1, n//4)`（14 期 → 3 阶）。样本足够时行为不变
+  （`auto_lags(91,21)` 仍是 20）。
+- **第七、八节表格多出 `index` 列** —— 调用处已 `reset_index` 过，
+  `_md_table` 内部又 reset 一次，于是多出一列 0/1 与 `h` 重复。改为 `index=False`。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

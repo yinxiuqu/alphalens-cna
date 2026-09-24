@@ -38,7 +38,7 @@ def _clean(x):
     return v[np.isfinite(v)]
 
 
-def subsample_stability(series, n_splits=2, min_obs=10):
+def subsample_stability(series, n_splits=2, min_obs=5):
     """**子样本一致性** —— 有多少比例的连续子段与全样本同号。
 
     Parameters
@@ -49,6 +49,8 @@ def subsample_stability(series, n_splits=2, min_obs=10):
         切成几段。``2`` = 前后半段；分段越多越严格。
     min_obs : int
         子段样本不足则**不参与**统计（并从 ``n_valid`` 里如实反映）。
+        默认 5（原为 10 —— 14 期月频面板被这个门槛整节打成空白，
+        而 2 段各 7 期其实够算）。
 
     Returns
     -------
@@ -104,9 +106,12 @@ def decay_test(series, lags=None, horizon=1):
     """
     x = _clean(series)
     n = len(x)
-    if n < 20:
+    if n < 8:
+        # ⚠️ 算不出来时必须返回 None，**不能返回 False**：
+        #    False 的含义是"检验过、没衰减"，而这里是"根本没检验"。
+        #    把"未检验"报成"已检验且通过"，正是本库一路在抓的那类错误。
         return {'slope': np.nan, 't_nw': np.nan, 't_naive': np.nan,
-                'annual_slope': np.nan, 'decaying': False, 'n': n,
+                'annual_slope': np.nan, 'decaying': None, 'n': n,
                 'lags': 0, 'vif': np.nan, 'half_life': np.nan}
     t = np.arange(n, dtype=float)
     tc = t - t.mean()

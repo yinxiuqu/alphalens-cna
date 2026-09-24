@@ -36,6 +36,7 @@ from .analysis import (
     quantile_turnover,
     quantize,
     rank_autocorrelation,
+    rolling_ic,
     shanken_inflation,
     tail_by_quantile,
     tail_ratio,
@@ -115,7 +116,17 @@ from .contract import (
     validate_inputs,
 )
 
-__version__ = '0.1.0.dev0'
+def _resolve_version():
+    """发行版元数据说 0.1.1、运行时却自报 0.1.0.dev0 —— 用 __version__ 做判断的代码会被误导。
+    改为从已安装元数据取，取不到（未安装的源码树）才回退。"""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        return version('alphalens-cna')
+    except Exception:                                            # noqa: BLE001
+        return '0.0.0+unknown'
+
+
+__version__ = _resolve_version()
 
 __all__ = [
     '__version__',

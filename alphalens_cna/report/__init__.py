@@ -189,9 +189,12 @@ class Report:
             # 百分比显示：既好读，也避免 1.0 被渲染成 1.0000
             st['稳定性'] = [f'{v:.0%}' if pd.notna(v) else '—'
                             for v in st['stability']]
-            st = st[['稳定性', 'slope', 't_slope', 'decaying', 'half_life']]
+            # declining 为 None = **没检验**（样本不足），必须显示"—"而不是"否"
+            st['是否衰减'] = ['—' if v is None or (isinstance(v, float) and not np.isfinite(v))
+                            else ('是' if v else '否') for v in st['decaying']]
+            st = st[['稳定性', 'slope', 't_slope', '是否衰减', 'half_life']]
             st.columns = ['稳定性', '斜率/期', '斜率 t(NW)', '是否衰减', '半衰期(期)']
-            L.append(_md_table(_int_cols(st.reset_index(), 'h')))
+            L.append(_md_table(_int_cols(st.reset_index(), 'h'), index=False))
             L.append('')
             if self.dsr is not None:
                 L.append('### 紧缩夏普比率（DSR）')
@@ -212,8 +215,11 @@ class Report:
             _cols = [c for c in ('hit_lo', 'hit_hi', 'hit_spread', 'mean_hi',
                                  'mean_lo', 'mean_spread', 't_hit', 't_naive_hit',
                                  'n_periods') if c in self.crash.columns]
+            # index=False：这里已经 reset 过了，_md_table 内部再 reset 一次
+            # 会多出一列 `index`（0/1），与 h 列重复。
             L.append(_md_table(_int_cols(
-                self.crash.reset_index()[['h'] + _cols], 'h', 'n_periods')))
+                self.crash.reset_index()[['h'] + _cols], 'h', 'n_periods'),
+                index=False))
             L.append('')
             L.append('> `hit_spread = QN − Q1`。**符号**：低分位更容易崩时它为**负**。')
             L.append('> 均值差与崩盘率差**可以结论相反**（实测 ROE 就是：'

@@ -16,6 +16,8 @@ __all__ = [
 ]
 
 PRICE_TOL = 1e-6
+# 复权因子的相对容差：10 位小数的存储舍入在价格量级下约 1e-10，留两个数量级余量
+ADJ_REL_TOL = 1e-8
 
 
 # --------------------------------------------------------------------------- #
@@ -132,7 +134,12 @@ def check_adjust_continuity(prices, th):
                        f'{int((f <= 0).sum()):,} 行 `adj_factor` ≤ 0',
                        float((f <= 0).sum()))
     d = f.groupby(level='asset').diff()
-    down = d < -1e-12
+    # ⚠️ 必须用**相对**容差：adj_factor 常以 10 位小数存储（round(x,10)），
+    #    价格量级下这个舍入本身就有 ~1e-10。用绝对容差 -1e-12 会把纯舍入
+    #    判成"因子倒退"（硬错误），让整个体检结论不可信。
+    #    （同一个病早前在 engine/adjust.py 的 check_adjust_agreement 修过，
+    #      这里漏了一处 —— 两处判据必须同源。）
+    down = d < -ADJ_REL_TOL * f.abs()
     n_down = int(down.sum())
     rel = f / f.groupby(level='asset').shift(1)
     jump = rel > th['adj_jump']

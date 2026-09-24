@@ -39,7 +39,12 @@ def auto_lags(n, horizon=1):
     if n < 3:
         return 0
     l_auto = int(np.floor(4 * (n / 100) ** (2 / 9)))     # Newey-West (1994) 经验式
-    return int(max(l_auto, max(int(horizon) - 1, 0)))
+    want = max(l_auto, max(int(horizon) - 1, 0))
+    # ★ 上限 n/4：`horizon-1` 这个下限的意义是"重叠窗口的跨度"，
+    #   但当持有期远大于样本量时它会把 lags 撑到 T-2 ——
+    #   实测 14 期面板 + h=63 → lags=12，等于用 14 个点估 12 阶自协方差，
+    #   由此算出的 vif/n_eff 全是垃圾。样本能支撑多少就估多少。
+    return int(min(want, max(1, n // 4)))
 
 
 def _as_1d(x):

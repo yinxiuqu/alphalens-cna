@@ -123,8 +123,11 @@ def test_decay_no_false_positive_on_noise():
 
 
 def test_decay_too_short():
-    r = acna.decay_test(pd.Series(np.arange(10.0)))
-    assert np.isnan(r['slope']) and r['decaying'] is False
+    # 门槛已从 20 降到 8：10 期现在**能算**（这正是修短样本问题的目的）
+    assert np.isfinite(acna.decay_test(pd.Series(np.arange(10.0)))['slope'])
+    # 真短到算不出时，decaying 必须是 None 而不是 False
+    r = acna.decay_test(pd.Series(np.arange(5.0)))
+    assert np.isnan(r['slope']) and r['decaying'] is None
 
 
 # ──────────────────────── 接进报告 ────────────────────────
