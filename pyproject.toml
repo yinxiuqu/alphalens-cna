@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alphalens-cna"
-version = "0.1.5"
+version = "0.1.6"
 description = "中国 A 股因子研究工具链 —— alphalens 的替代品，带推断层、数据体检与 A 股成交规则"
 readme = "README.md"
 requires-python = ">=3.9"
