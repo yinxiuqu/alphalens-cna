@@ -5,7 +5,13 @@
 
 ## [Unreleased]
 
-### Fixed（修掉 6 个缺陷：3 个来自用户反馈，3 个从产物反查）
+### 待办
+- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
+- 退市收益约定的行业维度复核
+
+## [0.1.2] - 2026-09-24
+
+### Fixed（10 个缺陷：3 个用户反馈 + 3 个从产物反查 + 2 个端到端回测 + 2 个同类扫描）
 - **`rolling_ic` 顶层导不出** —— 名字写进了 `__all__` 却漏了 import 块。
   后果分两层：`acna.rolling_ic` 报 AttributeError；
   **`from alphalens_cna import *` 直接抛异常** —— 星号导入的 notebook 一升级就炸。
@@ -61,9 +67,6 @@
   顺带修一个真 bug：`save(kind='markdown')` 在父目录不存在时抛
   `FileNotFoundError`，现在会先建目录；`kind` 非法值也改为报 ContractError。
 
-### 待办
-- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
-- 退市收益约定的行业维度复核
 
 ## [0.1.1] - 2026-09-24
 
