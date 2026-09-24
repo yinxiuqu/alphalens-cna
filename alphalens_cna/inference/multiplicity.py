@@ -68,11 +68,25 @@ def _as_array(p):
     if a.ndim != 1:
         a = a.ravel()
     if not np.all(np.isfinite(a)):
-        fail('multiplicity', 'nan_p',
-             'p 值里有 NaN/Inf —— 多重检验无法在有缺失时进行。\n'
-             '  最可能的原因不是 p 值本身，而是**上游样本不足**：'
-             '持有期超过样本跨度、或期数太少导致 t 算不出来。\n'
-             '  先看 clean() 的台账与 IC 面板，再回来做校正。')
+        # ★ 错误码必须与文案一致，且区分两种情况：
+        #   「全部 NaN」= 没有任何可校正的检验（上游彻底空）
+        #   「部分 NaN」= 有些检验算不出 p（上游部分不足）
+        #   程序化调用者靠 err.rule 分支，两种情况该做的事不同，
+        #   所以不能共用一个 `nan_p`（此前就是共用的 —— 文案换了、码没换）。
+        n_bad = int((~np.isfinite(a)).sum())
+        n_tot = int(a.size)
+        if n_bad == n_tot:
+            fail('multiplicity', 'no_valid_p',
+                 f'全部 {n_tot} 个 p 值都是 NaN/Inf —— 没有任何可校正的检验。\n'
+                 '  最可能的原因不是 p 值本身，而是**上游样本不足**：'
+                 '持有期超过样本跨度、或期数太少导致 t 算不出来。\n'
+                 '  先看 clean() 的台账与 IC 面板（或缩短 horizons），再回来做校正。')
+        fail('multiplicity', 'partial_nan_p',
+             f'{n_bad}/{n_tot} 个 p 值是 NaN/Inf —— 多重检验无法在有缺失时进行。\n'
+             '  这些检验多半是**因为样本不足算不出 t**，而不是 p 值本身有问题。\n'
+             '  两种处理（择一，并写进报告）：'
+             '① 剔除这些检验后再校正，但 `n_trials` 仍按**全部**假设数计；'
+             '② 先缩短 horizons 让它们能算出来，再统一校正。')
     if np.any((a < 0) | (a > 1)):
         fail('multiplicity', 'p_range', f'p 值必须落在 [0,1]，收到 {a.min()}~{a.max()}')
     return a

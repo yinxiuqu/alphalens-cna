@@ -132,9 +132,13 @@ def test_n_trials_smaller_than_p_rejected():
 
 
 def test_bad_p_rejected():
+    # ★ 部分 NaN 与全部 NaN 用不同的错误码（详见 test_short_sample_errors.py）
     with pytest.raises(ContractError) as e:
         acna.adjust([0.1, np.nan], 'bhy')
-    assert e.value.rule == 'nan_p'
+    assert e.value.rule == 'partial_nan_p'
+    with pytest.raises(ContractError) as e:
+        acna.adjust([np.nan, np.nan], 'bhy')
+    assert e.value.rule == 'no_valid_p'
     with pytest.raises(ContractError) as e:
         acna.adjust([1.5], 'bhy')
     assert e.value.rule == 'p_range'

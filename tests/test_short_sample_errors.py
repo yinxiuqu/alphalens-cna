@@ -104,3 +104,39 @@ def test_nan_p_message_points_upstream():
             p=[0.01, float('nan')], method='bhy')
     msg = str(e.value)
     assert '样本' in msg or '持有期' in msg, msg[:160]
+
+
+def test_nan_p_error_codes_distinguish_cases():
+    """★ 错误码必须与文案一致（测试者反馈：文案换了、码没换）。
+
+    「全部 NaN」与「部分 NaN」该做的事不同，程序化调用者靠 `err.rule` 分支，
+    不能共用一个 `nan_p`。
+    """
+    from alphalens_cna.inference import multiplicity as mult
+    # 全部 NaN → no_valid_p
+    with pytest.raises(acna.ContractError) as e:
+        mult.adjust(p=[np.nan, np.nan], method='bhy')
+    assert e.value.rule == 'no_valid_p', e.value.rule
+    assert '没有任何可校正的检验' in str(e.value)
+    # 部分 NaN → partial_nan_p
+    with pytest.raises(acna.ContractError) as e:
+        mult.adjust(p=[0.01, np.nan], method='bhy')
+    assert e.value.rule == 'partial_nan_p', e.value.rule
+    assert '1/2' in str(e.value) and 'n_trials' in str(e.value)
+    # 都不该再出现旧的 nan_p
+    for bad in ([np.nan], [0.01, np.inf]):
+        with pytest.raises(acna.ContractError) as e:
+            mult.adjust(p=bad, method='bhy')
+        assert e.value.rule != 'nan_p', '旧的 nan_p 码不该再出现'
+
+
+def test_error_codes_are_programmatically_distinguishable():
+    """两种情况的 contract/rule 组合必须可区分（供 except 分支使用）。"""
+    from alphalens_cna.inference import multiplicity as mult
+    codes = []
+    for p in ([np.nan, np.nan], [0.01, np.nan]):
+        try:
+            mult.adjust(p=p, method='bhy')
+        except acna.ContractError as e:
+            codes.append((e.contract, e.rule))
+    assert len(set(codes)) == 2, codes

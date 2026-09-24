@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### 修复
+- **多重检验的缺失 p 现在分两个错误码**。此前不管「全部 NaN」还是「部分 NaN」，抛的都是
+  `multiplicity/nan_p`；文案已经改成指向「上游样本不足」，错误码却没跟着换，程序化调用者
+  拿 `err.rule` 分不出该走哪条路（观感/可编程性问题，不影响结论正确性）。现在拆成：
+  `no_valid_p`（**全部** p 是 NaN/Inf —— 没有任何可校正的检验，该回去查数据或缩短 horizons）、
+  `partial_nan_p`（**部分** p 是 NaN —— 提示里给出两种处理，并强调剔除后 `n_trials`
+  仍按全部假设数计）。
+  ⚠️ 破坏性变更：匹配旧 `nan_p` 的 `except` 分支需同步改。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
