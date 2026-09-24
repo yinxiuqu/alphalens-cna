@@ -112,3 +112,40 @@ def test_zero_plotting_dependency():
 
 if __name__ == '__main__':
     sys.exit(pytest.main([__file__, '-q']))
+
+
+def test_save_frames_reports_actual_formats(tmp_path):
+    """★ 第 10 项回归：存盘不许静默改格式。
+
+    优先 parquet，没引擎时降级 CSV —— 但**实际格式与原因必须可查**
+    （此前是静默 `except: to_csv`）。
+    """
+    rep = build(n_trials=3)
+    out = str(tmp_path / 'frames')
+    rep.save(out, kind='frames')
+    sr = rep.save_report
+    assert sr['formats'], '必须记录实际格式'
+    assert set(sr['formats'].values()) <= {'parquet', 'csv'}
+    # 降级了就必须有原因，没降级就该是空的
+    assert bool(sr['downgraded']) == any(v == 'csv' for v in sr['formats'].values())
+    # 文件真的存在，且扩展名与实际格式一致
+    import os
+    for nm, fmt in sr['formats'].items():
+        assert os.path.exists(os.path.join(out, f'{nm}.{fmt}'))
+
+
+def test_save_markdown_creates_parent_dir(tmp_path):
+    """存 markdown 时父目录不存在也要建（此前会抛 FileNotFoundError）。"""
+    rep = build(n_trials=3)
+    p = str(tmp_path / 'deep' / 'nest' / 'report.md')
+    rep.save(p)
+    assert rep.save_report['formats']
+    import os
+    assert os.path.exists(p)
+
+
+def test_save_bad_kind_rejected():
+    import pytest
+    rep = build(n_trials=3)
+    with pytest.raises(acna.ContractError):
+        rep.save('/tmp/x', kind='nope')

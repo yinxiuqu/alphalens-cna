@@ -53,6 +53,14 @@
   报告显示「**未计算** —— <原因>」。
   （这一条是"再扫一遍"扫出来的第 9 个缺陷，与前面 8 个同族：声明与实际不一致。）
 
+- **`Report.save()` 静默降级格式** —— 优先写 parquet，没 pyarrow 时
+  `except Exception: to_csv`，**格式悄悄变了调用方不知道**。
+  这个兜底本身是必要的（parquet 引擎不在本库依赖里），错的是它不留痕。
+  改为：实际格式与降级原因记在 `Report.save_report`
+  （`{'formats': {...}, 'downgraded': [(名字, 原因)]}`）。
+  顺带修一个真 bug：`save(kind='markdown')` 在父目录不存在时抛
+  `FileNotFoundError`，现在会先建目录；`kind` 非法值也改为报 ContractError。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

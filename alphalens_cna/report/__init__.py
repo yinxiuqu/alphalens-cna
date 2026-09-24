@@ -73,6 +73,9 @@ class Report:
     crash: pd.DataFrame = None
     health: object = None
     dsr: object = None
+    save_report: dict = field(default_factory=dict)
+        # 上一次 save() **实际**写了什么格式、有哪些降级了。
+        # 空 dict = 还没存过盘。不许静默降级：降级原因在这里可查。
     dsr_note: str = ''
         # DSR **没能计算**时的原因。空串 = 算出来了。
         # 不许静默省略：报告里会显示"未计算 + 原因"。
@@ -270,18 +273,60 @@ class Report:
         return '\n'.join(L)
 
     def save(self, path, kind='markdown', title=None):
-        """存盘。``kind='markdown'`` 或 ``'frames'``（后者存成 parquet 目录）。"""
+        """存盘。``kind='markdown'`` 或 ``'frames'``（后者每张 tidy 表一个文件）。
+
+        Parameters
+        ----------
+        path : str
+            ``kind='markdown'`` 时是文件路径；``'frames'`` 时是目录。
+        kind : {'markdown', 'frames'}
+        title : str, optional
+
+        Returns
+        -------
+        str
+            ``path``（保持既有签名不变）。
+
+        Notes
+        -----
+        ``kind='frames'`` 优先写 parquet，**没有 pyarrow/fastparquet 时降级写 CSV**
+        —— 这个兜底是必要的（parquet 引擎不在本库依赖里），
+        但降级**必须让人看得见**：实际格式与原因记在 :attr:`save_report` 里，
+        形如 ``{'formats': {'ic': 'parquet', ...}, 'downgraded': [('ic', 'ImportError: ...')]}``。
+
+        （此前是静默 `except Exception: to_csv`，格式悄悄变了调用方不知道 ——
+         与前面 9 个缺陷同族：声明与实际不一致。）
+
+        Examples
+        --------
+        >>> rep.save('out/frames', kind='frames')
+        >>> if rep.save_report['downgraded']:
+        ...     print('有表降级成 CSV：', rep.save_report['downgraded'])
+        """
         import os
         if kind == 'markdown':
+            d = os.path.dirname(os.path.abspath(path))
+            if d:
+                os.makedirs(d, exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(self.to_markdown(title))
+            self.save_report = {'formats': {os.path.basename(path): 'markdown'},
+                                'downgraded': [], 'path': path}
             return path
+        if kind != 'frames':
+            fail('report', 'bad_kind', f"kind 只能是 'markdown' / 'frames'，收到 {kind!r}")
         os.makedirs(path, exist_ok=True)
+        formats, downgraded = {}, []
         for nm, df in self.frames().items():
             try:
                 df.to_parquet(os.path.join(path, f'{nm}.parquet'))
-            except Exception:
+                formats[nm] = 'parquet'
+            except Exception as e:                                # noqa: BLE001
                 df.to_csv(os.path.join(path, f'{nm}.csv'))
+                formats[nm] = 'csv'
+                downgraded.append((nm, f'{type(e).__name__}: {e}'))
+        self.save_report = {'formats': formats, 'downgraded': downgraded,
+                            'path': path}
         return path
 
     def __repr__(self):
