@@ -123,14 +123,25 @@ class DropLedger:
         return True
 
     def to_frame(self) -> pd.DataFrame:
-        """明细账转成表，便于写进报告。"""
+        """明细账转成表，便于写进报告。
+
+        ★ 列名**钉死**，且零剔除时也要有「—— 保留 ——」这一行。
+
+        修前是裸的 ``pd.DataFrame(rows)``：``counts`` 为空 → ``(0, 0)``，
+        连列名都没有 —— 报告层接着 ``.set_index('reason')`` 就
+        ``KeyError: "None of ['reason'] are in the columns"``，整份报告渲染不出来。
+        触发条件只是"一次清洗一条都没剔"（稠密合成面板 + 短持有期就能撞上）；
+        真实研究几乎总会剔掉点东西（区间末尾的前向收益缺失），所以这坑藏了很久。
+        「0 剔除、全部保留」本身就是结论，值得单独占一行。
+        """
         rows = [{'reason': r, 'count': n,
                  'pct': (n / self.n_input * 100) if self.n_input else np.nan,
                  'meaning': REASON_TEXT.get(r, r),
                  'sample': self.examples.get(r, [])}
                 for r, n in self.counts.items()]
-        df = pd.DataFrame(rows)
-        if len(df):
+        df = pd.DataFrame(rows, columns=['reason', 'count', 'pct',
+                                         'meaning', 'sample'])
+        if len(rows) or self.n_input:
             df.loc[len(df)] = {'reason': '—— 保留 ——', 'count': self.n_output,
                                'pct': (self.n_output / self.n_input * 100)
                                       if self.n_input else np.nan,

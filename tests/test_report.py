@@ -174,3 +174,53 @@ def test_hold_period_column_name_is_unified():
     assert seen.get('h'), '应当用 h 作为持有期列名'
     # 图例里要解释 h
     assert '| `h` |' in md and '持有期' in md
+
+
+# ── 零剔除：报告必须照样出得来 ────────────────────────────────────
+def test_zero_drop_ledger_keeps_columns():
+    """★ 零剔除时 to_frame() 也必须带列名（真 bug 的根因）。
+
+    修前 ``pd.DataFrame(rows)`` 在 counts 为空时给出 ``(0, 0)`` —— 连列名都没有，
+    报告层接着 ``.set_index('reason')`` 就
+    ``KeyError: "None of ['reason'] are in the columns"``。
+    """
+    from alphalens_cna.engine.clean import DropLedger
+    led = DropLedger(n_input=48, n_output=48, counts={}, examples={})
+    df = led.to_frame()
+    assert list(df.columns) == ['reason', 'count', 'pct', 'meaning', 'sample'], \
+        list(df.columns)
+    assert len(df) == 1, '零剔除也要有「—— 保留 ——」那一行（0 剔除本身就是结论）'
+    assert df.iloc[0]['reason'] == '—— 保留 ——'
+    assert df.iloc[0]['count'] == 48
+    assert df.set_index('reason').shape[0] == 1        # 崩点：修前这里 KeyError
+
+    # 真正空台账（输入 0 行）：允许 0 行，但列名必须在，下游不许崩
+    empty = DropLedger().to_frame()
+    assert list(empty.columns) == ['reason', 'count', 'pct', 'meaning', 'sample']
+    assert len(empty) == 0
+    empty.set_index('reason')
+
+
+def test_zero_drop_report_still_renders(tmp_path):
+    """★ 一条都没剔时报告要出得来（修前：整份报告渲染直接崩）。
+
+    之前一直没暴露，是因为真实研究几乎总会剔掉点什么（区间末尾的前向收益缺失）；
+    稠密面板 + 短持有期才撞得出来。
+    """
+    import dataclasses
+    rep = build()
+    dates = pd.DatetimeIndex(IDX.get_level_values('date').unique())[:6]
+    sub = IDX[IDX.get_level_values('date').isin(dates)]
+    fac = pd.DataFrame({'factor': rng.normal(size=len(sub))}, index=sub)
+    ret = pd.DataFrame({'forward_return_1': rng.normal(0, .02, len(sub))}, index=sub)
+    zero = acna.clean(fac, ret, horizons=[1])
+    assert zero.ledger.counts == {}, '用例前提：必须真的一条都没剔'
+    rep2 = dataclasses.replace(rep, clean=zero)
+
+    md = rep2.to_markdown()
+    assert '## 十、剔除明细' in md
+    assert '零剔除' in md, '零剔除要写明，不能留一片空白'
+
+    # 两条存盘路也都得走通
+    assert rep2.save(str(tmp_path / 'r.md'), kind='markdown')
+    rep2.save(str(tmp_path / 'frames'), kind='frames')

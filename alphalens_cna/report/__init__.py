@@ -254,10 +254,23 @@ class Report:
         if self.clean is not None and getattr(self.clean, 'ledger', None):
             L.append('## 十、剔除明细')
             L.append('')
-            L.append(_md_table(self.clean.ledger.to_frame().set_index('reason'),
-                               index=True))
-            L.append('')
-            L.append('> 每个原因都带样本索引，可直接回原始数据核对。')
+            # ⚠️ 这里不能无条件 .set_index('reason')。DropLedger 没有 __bool__，
+            #    所以上面的 `getattr(...)` 守卫对"零剔除的台账"是**真值**，
+            #    而零剔除时 to_frame() 曾是 (0, 0) 空表 → KeyError → 整份报告崩。
+            #    根因已在 DropLedger.to_frame() 修掉（列名钉死 + 补「保留」行），
+            #    这里再加一道守卫：真拿到空表也渲染成人话，而不是甩异常。
+            led = self.clean.ledger.to_frame()
+            if len(led) and 'reason' in led.columns:
+                L.append(_md_table(led.set_index('reason'), index=True))
+                L.append('')
+                if led['reason'].eq('—— 保留 ——').all():
+                    L.append('> **零剔除** —— 一条都没被丢掉，所以没有可回查的样本。'
+                             '这不是"没跑清洗"：台账记的是**每一步判据**，'
+                             '全部通过才会长这样。')
+                else:
+                    L.append('> 每个原因都带样本索引，可直接回原始数据核对。')
+            else:
+                L.append('> 台账为空（输入 0 行），没有可展示的剔除记录。')
             L.append('')
 
         L += [
