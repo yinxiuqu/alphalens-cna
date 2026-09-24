@@ -175,3 +175,25 @@ def test_verdict_renders_stability():
     st = acna.subsample_stability(y)['stability']
     v = acna.assess(ic=ic, n_trials=3, stability=st)
     assert '稳定性' in str(v) and '100% 子样本成立' in str(v)
+
+
+def test_dsr_failure_is_not_silently_omitted():
+    """★ 第 9 项回归：DSR 算不出来时必须留痕，不能静默省略整节。
+
+    构造零波动的多空收益（退化为常数）→ DSR 抛 zero_vol →
+    报告要显示"未计算 + 原因"，且 Verdict.warnings 里能查到。
+    """
+    import alphalens_cna as acna
+    rep = acna.Report(factor_name='x', dsr=None,
+                      dsr_note='ContractError: 收益序列标准差为 0，夏普无定义',
+                      stability_detail={21: {'stability': 1.0, 'chunk_means': [0.1],
+                                             'slope': -1e-4, 't_slope': -2.0,
+                                             'decaying': False, 'half_life': None}})
+    md = rep.to_markdown()
+    assert '### 紧缩夏普比率（DSR）' in md
+    assert '未计算' in md and '标准差为 0' in md, md.split('DSR')[1][:200]
+
+
+def test_dsr_note_defaults_empty_when_computed():
+    rep = acna.Report(factor_name='x', dsr_note='')
+    assert rep.dsr_note == ''

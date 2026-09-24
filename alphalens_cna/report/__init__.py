@@ -73,6 +73,9 @@ class Report:
     crash: pd.DataFrame = None
     health: object = None
     dsr: object = None
+    dsr_note: str = ''
+        # DSR **没能计算**时的原因。空串 = 算出来了。
+        # 不许静默省略：报告里会显示"未计算 + 原因"。
     extra: dict = field(default_factory=dict)
 
     # -- tidy 输出 ----------------------------------------------------------
@@ -196,13 +199,15 @@ class Report:
             st.columns = ['稳定性', '斜率/期', '斜率 t(NW)', '是否衰减', '半衰期(期)']
             L.append(_md_table(_int_cols(st.reset_index(), 'h'), index=False))
             L.append('')
+            L.append('### 紧缩夏普比率（DSR）')
+            L.append('')
             if self.dsr is not None:
-                L.append('### 紧缩夏普比率（DSR）')
-                L.append('')
                 L.append('```')
                 L.append(str(self.dsr))
                 L.append('```')
-                L.append('')
+            else:
+                L.append(f'> **未计算** —— {self.dsr_note or "原因未知"}')
+            L.append('')
             L.append('')
 
         if self.crash is not None and len(self.crash):
@@ -508,17 +513,25 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     stab_main = stab.get(main_h, {}).get('stability') if main_h else None
 
     # ── DSR：扣掉"挑过 N 个组合"的选择偏差 ──
-    dsr_res = None
+    dsr_res, dsr_note = None, ''
     if fr0 is not None and len(fr0.dropna()) >= 20:
         try:
             dsr_res = _dsr(fr0.dropna(), n_trials=int(n_trials or 1))
-        except Exception:                                        # noqa: BLE001
-            dsr_res = None
+        except Exception as e:                                   # noqa: BLE001
+            # ★ 不许静默省略：算不出来要说清原因。
+            #   （否则报告里那一节整节消失，用户分不清"不用算"和"算失败"。）
+            dsr_note = f'{type(e).__name__}: {e}'
+    elif fr0 is None:
+        dsr_note = '没有多空收益序列（分位收益为空）'
+    else:
+        dsr_note = f'有效观测仅 {len(fr0.dropna())} 期（少于 20），不足以估偏度/峰度'
     v = assess(ic=ic, n_trials=n_trials, method=method, ledger=cr.ledger,
                returns=(fr[fr.columns[0]] if len(fr.columns) else None),
                turnover=to.mean(axis=1), cost_bps=cost_bps,
                crash=crash_tbl, stability=stab_main)
 
+    if dsr_note and 'warnings' in dir(v):
+        v.warnings.append(f'DSR 未计算 —— {dsr_note}')
     if warn_unnormalized and not psteps and (exposures is not None
                                              or groupby is not None):
         v.warnings.append(
@@ -532,4 +545,5 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         quantile_stats=quantile_stats(cr, quantiles=q),
         turnover=ts, verdict=v, tail=tail_tbl, crash=crash_tbl,
         health=hp, preprocess=psteps, stability_detail=stab, dsr=dsr_res,
+        dsr_note=dsr_note,
         extra={'long_short': fr, 'preprocess_log': _plog(cr)})
