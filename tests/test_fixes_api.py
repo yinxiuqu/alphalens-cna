@@ -77,6 +77,44 @@ def test_adj_continuity_still_catches_real_regression():
     assert ac.severity == 'fail'
 
 
+def test_adj_continuity_fail_does_not_hide_jumps():
+    """★ fail 分支不许把"跳变"吞掉（全量回归：3 处假倒退盖住了 3 处真跳变）。
+
+    同一行不可能既下降又翻倍，所以一批"倒退"和一批"跳变"必然是两组不同的行；
+    但代码里 n_down 优先 return，跳变数就没机会出现在文案里。
+    """
+    dates = pd.bdate_range('2024-01-01', periods=6)
+    idx = pd.MultiIndex.from_product([dates, ['000001']], names=['date', 'asset'])
+    # 第 3 天：真实倒退（相对幅度远超容差）；第 5 天：台阶式跳变 3.5 倍
+    f = np.array([1.0, 1.2, 0.6, 0.6, 2.1, 2.1])
+    df = pd.DataFrame({'adj_factor': f, 'raw_open': 10.0, 'raw_close': 10.0,
+                       'raw_high': 10.0, 'raw_low': 10.0, 'adj_open': 10.0,
+                       'adj_close': 10.0, 'adj_high': 10.0, 'adj_low': 10.0,
+                       'prev_close': 10.0, 'volume': 1e6}, index=idx)
+    ac = [x for x in acna.health_check(prices=df).findings
+          if x.name == '复权连续性'][0]
+    assert ac.severity == 'fail'
+    assert '倒退' in ac.summary
+    assert '跳变' in ac.summary, f'fail 把跳变藏起来了: {ac.summary}'
+    assert ac.metric == 1.0, 'metric 该是硬错误数，不该被跳变稀释'
+    # detail 里两批行都要在
+    assert set(ac.detail['问题']) == {'因子倒退', '跳变过大'}, ac.detail['问题'].tolist()
+
+
+def test_adj_continuity_fail_without_jump_has_no_extra_clause():
+    """反向：只有倒退、没有跳变时，不该凭空多出一句。"""
+    dates = pd.bdate_range('2024-01-01', periods=4)
+    idx = pd.MultiIndex.from_product([dates, ['000001']], names=['date', 'asset'])
+    df = pd.DataFrame({'adj_factor': [1.0, 1.2, 0.6, 0.6], 'raw_open': 10.0,
+                       'raw_close': 10.0, 'raw_high': 10.0, 'raw_low': 10.0,
+                       'adj_open': 10.0, 'adj_close': 10.0, 'adj_high': 10.0,
+                       'adj_low': 10.0, 'prev_close': 10.0, 'volume': 1e6}, index=idx)
+    ac = [x for x in acna.health_check(prices=df).findings
+          if x.name == '复权连续性'][0]
+    assert ac.severity == 'fail'
+    assert '跳变' not in ac.summary, f'没跳变却多了一句: {ac.summary}'
+
+
 # ── ④ 短样本：敢算，且"算不出来"不许说成"没衰减" ────────────────
 def test_stability_works_on_14_periods():
     """★ 14 期月频面板是常见规模，不该整节空白。"""

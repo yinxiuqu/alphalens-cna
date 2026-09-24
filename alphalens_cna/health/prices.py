@@ -165,8 +165,15 @@ def check_adjust_continuity(prices, th):
     detail = pd.concat(rows) if rows else None
 
     if n_down:
+        # ⚠️ fail 的优先级高于跳变，但**不能因此把跳变藏起来**。
+        #    全量回归里就撞上过：3 处存储舍入造成的假"倒退"把 3 处真实的
+        #    2 倍跳变盖成了 fail 里的沉默项 —— 报告读起来像"只有复权问题"。
+        #    detail 里本来就带着两批行，汇总文案也得说全。
+        #    （metric 仍是 n_down：硬错误的数量不该被跳变稀释。）
+        extra = (f'；另有 {n_jump:,} 处单日跳变 > {th["adj_jump"]:.0f} 倍'
+                 f'（也看一眼是不是送转股）') if n_jump else ''
         return Finding('复权连续性', 'fail',
-                       f'{n_down:,} 处复权因子**倒退**（复权因子必须单调不减）',
+                       f'{n_down:,} 处复权因子**倒退**（复权因子必须单调不减）{extra}',
                        float(n_down), detail)
     if n_jump:
         return Finding('复权连续性', 'warn',
