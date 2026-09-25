@@ -5,7 +5,32 @@
 
 ## [Unreleased]
 
+### 新增
+- **`ReturnModel.exit_policy` —— 出场侧可成交性**（默认 `'assume'`，**向后兼容**）。
+  此前 `can_sell_open` 只出现在体检报告里，收益计算**完全不用它**：出场日一字跌停
+  照样按当日价成交 —— 而设计文档自己写着"涨跌停意味着次日大概率买不进/**卖不出**，
+  把这段收益算进去就是策略高估"。
+
+  * `'assume'`（默认）—— 保持旧口径。已与已发布的 0.1.7 做过 A/B：收益、台账、
+    parity（`0.0`）、verdict **全部逐位相同**，报告只差下面那条文案。
+  * `'drop'` —— 该行剔除，计入原因账 `exit_not_sellable`。
+  * `'delay'` —— 顺延到 `max_delay` 个交易日内第一个**可卖且有价**的日子，
+    实际持有期因此长于 `h`；顺延不到则剔除，计入 `exit_blocked`。
+
+  ⚠️ 非 `'assume'` 时**必须**给 `tradability`，否则明确报错
+  （`exit_policy_needs_tradability`），不静默降级。
+  ⚠️ **退市行不归它管**：退市按 `delist_policy` 清算 —— "股票没了"与"今天卖不掉"
+  是两件事。实现中实测到两者互撞会把 `delist_policy='last_price'` 整个推翻
+  （tradable 12 → 7），已用 `exempt` 隔离并加回归测试。
+  台账键的文档同步说清分两类：**剔除原因**（⚠️ **不构成严格划分**，同一行可能被
+  入场侧与出场侧各记一次，故 `Σ >= dropped`；恒成立的是 `total − tradable`）
+  与**处理说明**（`delist_filled` / `exit_delayed` —— 那些行仍在样本里）。
+
 ### 修复
+- 体检报告的「可卖 X%」补上限定语「（体检指标，是否门控收益见 exit_policy）」——
+  不加这句会被读成"收益里已经扣掉了卖不掉的那些天"。实测 A/B：整份报告**只有
+  这一行**变化，其余逐字节相同。
+
 - **`calendar` 参数在不同入口的接受度不一致**（连带 4 个入口崩溃）。
   `forward_returns` / `compute_tradability` / `build_report` / `check_parity` 只认
   `Calendar` 对象，传裸 `DatetimeIndex` 会抛

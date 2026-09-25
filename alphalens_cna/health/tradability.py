@@ -64,8 +64,12 @@ def check_tradability(td, th):
             out.append(Finding(
                 '可成交性', 'pass',
                 '平均可买 ' + fmt_pct(metric)
+                # ⚠️ 这里的"可卖"是**体检指标**，默认并不参与收益门控
+                #    （是否门控由 `ReturnModel.exit_policy` 决定）。不加这句，
+                #    读者会以为"收益里已经扣掉了卖不掉的那些天"。
                 + '，可卖 ' + (fmt_pct(float(rates["can_sell"].mean()))
                                if 'can_sell' in rates.columns else '—')
+                + '（体检指标，是否门控收益见 exit_policy）'
                 + '，停牌 ' + (fmt_pct(float(rates["suspended"].mean()))
                                if 'suspended' in rates.columns else '—')
                 + '，ST ' + (fmt_pct(float(rates["is_st"].mean()))

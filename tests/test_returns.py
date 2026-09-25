@@ -266,3 +266,154 @@ def test_calendar_accepts_bare_datetimeindex():
     t1 = acna.compute_tradability(px, calendar=cal)
     t2 = acna.compute_tradability(px, calendar=dates)
     assert t1.equals(t2), 'Calendar 与 DatetimeIndex 的可成交性不一致'
+
+
+# ── 2026-09-25：出场侧可成交性（exit_policy）─────────────────────────
+def _mk_exit_blocked_panel():
+    """12 天；B 在 D[10] 一字跌停 —— 入场 D[9]/出场 D[10] 的那行卖不出。"""
+    dates = pd.bdate_range('2024-01-02', periods=12)
+    assets = ['600000', '000001']
+    idx = pd.MultiIndex.from_product([dates, assets], names=['date', 'asset'])
+    px = pd.DataFrame({'raw_close': 10.0}, index=idx)
+    px['raw_open'] = px['raw_high'] = px['raw_low'] = 10.0
+    hit = ((px.index.get_level_values('asset') == '000001')
+           & (px.index.get_level_values('date') == dates[10]))
+    for c in ('raw_open', 'raw_high', 'raw_low', 'raw_close'):
+        px.loc[hit, c] = 9.0
+    px['prev_close'] = px.groupby(level='asset')['raw_close'].shift(1).fillna(10.0)
+    px['adj_factor'] = 1.0
+    for c in ('open', 'high', 'low', 'close'):
+        px[f'adj_{c}'] = px[f'raw_{c}']
+    px['volume'] = 1e5
+    return px, dates, (dates[8], '000001')       # 该行的出场日 = dates[10]
+
+
+def _run_exit(policy, px, dates, **kw):
+    cal = acna.Calendar(dates)
+    tr = acna.compute_tradability(px, calendar=cal)
+    model = acna.ReturnModel(entry='next_open', policy='skip', exit_price='open',
+                             exit_policy=policy, **kw)
+    return acna.forward_returns(px, cal, [1], tradability=tr, model=model)
+
+
+def test_exit_policy_assume_keeps_old_behaviour():
+    """★ 默认 ``'assume'`` 必须**保持旧口径**：出场日一字跌停照样按当日价成交。
+
+    这是"乐观"的那一支 —— 之所以留作默认，是因为改默认会静默改变所有人的结论。
+    """
+    px, dates, key = _mk_exit_blocked_panel()
+    r = _run_exit('assume', px, dates)
+    assert np.isfinite(r.df.loc[key, 'forward_return_1'])
+    assert abs(r.df.loc[key, 'forward_return_1'] + 0.10) < 1e-12
+    # 显式传 'assume' 与不传（默认）结果逐位相同
+    cal = acna.Calendar(dates)
+    tr = acna.compute_tradability(px, calendar=cal)
+    d = acna.forward_returns(px, cal, [1], tradability=tr,
+                             model=acna.ReturnModel(entry='next_open')).df
+    assert d.equals(r.df)
+
+
+def test_exit_policy_drop_removes_unsellable_exit():
+    px, dates, key = _mk_exit_blocked_panel()
+    r = _run_exit('drop', px, dates)
+    assert not np.isfinite(r.df.loc[key, 'forward_return_1']), '卖不出的出场必须剔除'
+    assert r.ledger[1].get('exit_not_sellable', 0) >= 1
+    assert r.ledger[1]['tradable'] < _run_exit('assume', px, dates).ledger[1]['tradable']
+
+
+def test_exit_policy_delay_shifts_to_next_sellable_day():
+    px, dates, key = _mk_exit_blocked_panel()
+    r = _run_exit('delay', px, dates)
+    assert r.ledger[1].get('exit_delayed', 0) >= 1
+    # 出场日被顺延到跌停的次日；收益按**那一天的**开盘价算（本例价格回到 10 → 0%）
+    assert pd.Timestamp(r.df.loc[key, 'exit_date_1']) == dates[11]
+    assert abs(r.df.loc[key, 'forward_return_1']) < 1e-12
+
+
+def test_exit_policy_requires_tradability():
+    """★ 没有可成交性数据就判断不出卖不卖得掉 —— 必须报错，不许静默降级。"""
+    px, dates, _ = _mk_exit_blocked_panel()
+    for policy in ('drop', 'delay'):
+        with pytest.raises(ContractError) as e:
+            acna.forward_returns(px, acna.Calendar(dates), [1],
+                                 model=acna.ReturnModel(exit_policy=policy))
+        assert e.value.rule == 'exit_policy_needs_tradability'
+
+
+def test_exit_policy_invalid_name_rejected():
+    with pytest.raises(ContractError) as e:
+        acna.ReturnModel(exit_policy='whatever')
+    assert e.value.rule == 'bad_exit_policy'
+
+
+def test_ledger_counts_are_exact_and_dropped_is_consistent():
+    """★ 台账的两条**真正成立**的性质。
+
+    ``dropped == total − tradable`` 恒成立；而各原因键**不构成严格划分** ——
+    同一行可能同时被入场侧判据与出场侧缺价命中（实测过），所以不拿 Σ 对账
+    （这是既有行为，不是本次引入的）。这里钉住的是：
+      · ``dropped = total − tradable``
+      · ``exit_not_sellable`` **只数因出场不可卖才被剔的行**（切到 drop 时
+        tradable 恰好减少这么多）—— 不能把本来就会被别的原因剔掉的行重复计入。
+    """
+    px, dates, _ = _mk_exit_blocked_panel()
+    base = _run_exit('assume', px, dates).ledger[1]
+    drop = _run_exit('drop', px, dates).ledger[1]
+    for led in (base, drop):
+        assert led['dropped'] == led['total'] - led['tradable']
+    delta = base['tradable'] - drop['tradable']
+    assert delta >= 1, '这个用例里必须真有"因出场不可卖而被剔"的行'
+    assert drop.get('exit_not_sellable', 0) == delta, (
+        f'exit_not_sellable={drop.get("exit_not_sellable")} 应恰好等于被剔掉的行数 {delta}')
+
+
+def test_ledger_marks_delays_as_informational_not_dropped():
+    """★ ``exit_delayed`` 是**处理说明**，不是剔除原因 —— 那些行仍在样本里。"""
+    px, dates, _ = _mk_exit_blocked_panel()
+    base = _run_exit('assume', px, dates).ledger[1]
+    delay = _run_exit('delay', px, dates).ledger[1]
+    assert delay.get('exit_delayed', 0) >= 1
+    assert delay['tradable'] == base['tradable'], '顺延不减少样本'
+    assert delay['dropped'] == base['dropped']
+
+
+def test_exit_policy_does_not_override_delist_convention():
+    """★ 退市行归 ``delist_policy`` 管，``exit_policy`` **不许碰**。
+
+    退市股在出场日必然"卖不出"（早已没有价格）。若出场策略把它一并当"卖不出"
+    剔掉，``delist_policy='last_price'`` 就被整个推翻了 —— 那是 0.1.1 专门修过的
+    生存者偏差护栏。实测过：混在一起时 tradable 从 12 掉到 7。
+    """
+    dates = pd.bdate_range('2024-01-02', periods=12)
+    assets = ['600000', '000001']
+    idx = pd.MultiIndex.from_product([dates, assets], names=['date', 'asset'])
+    px = pd.DataFrame({'raw_close': 10.0}, index=idx)
+    px['raw_open'] = px['raw_high'] = px['raw_low'] = 10.0
+    gone = ((px.index.get_level_values('asset') == '000001')
+            & (px.index.get_level_values('date') > dates[6]))       # B 退市
+    for c in ('raw_open', 'raw_high', 'raw_low', 'raw_close'):
+        px.loc[gone, c] = np.nan
+    px['prev_close'] = px.groupby(level='asset')['raw_close'].shift(1).fillna(10.0)
+    px['adj_factor'] = 1.0
+    for c in ('open', 'high', 'low', 'close'):
+        px[f'adj_{c}'] = px[f'raw_{c}']
+    px['volume'] = 1e5
+    cal = acna.Calendar(dates)
+    tr = acna.compute_tradability(px, calendar=cal)
+
+    def led(exit_policy):
+        r = acna.forward_returns(
+            px, cal, [5], tradability=tr,
+            model=acna.ReturnModel(entry='next_open', policy='skip',
+                                   exit_price='open', exit_policy=exit_policy,
+                                   delist_policy='last_price'))
+        return r.ledger[5]
+
+    base = led('assume')
+    assert base.get('delist_filled', 0) >= 1, '用例前提：真有按退市约定清算的行'
+    for policy in ('drop', 'delay'):
+        got = led(policy)
+        assert got['tradable'] == base['tradable'], (
+            f"{policy} 把退市行也剔了：tradable {got['tradable']} != {base['tradable']}")
+        assert got.get('delist_filled', 0) == base.get('delist_filled', 0)
+        assert got.get('exit_not_sellable', 0) == 0

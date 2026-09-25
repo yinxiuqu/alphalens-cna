@@ -43,6 +43,7 @@ __all__ = ['ReturnModel', 'Returns', 'forward_returns', 'ENTRY_MODES',
            'POLICIES', 'DELIST_POLICIES']
 
 ENTRY_MODES = ('next_open', 'close', 'same_open')
+EXIT_POLICIES = ('assume', 'drop', 'delay')   # 出场日卖不出时怎么办
 POLICIES = ('skip', 'mark_only', 'delay')
 # 持有期内退市（股票消失）时的收益约定 —— 见 ReturnModel.delist_policy
 DELIST_POLICIES = ('nan', 'last_price', 'haircut')
@@ -94,6 +95,24 @@ class ReturnModel:
         仍按缺失处理（那是数据/流动性问题，不是退市）。
     delist_return : float
         ``delist_policy='haircut'`` 时在最后成交价上再乘 ``1 + delist_return``。
+    exit_policy : {'assume', 'drop', 'delay'}
+        **出场日卖不出**（开盘一字跌停 / 停牌）时怎么办。默认 ``'assume'``。
+
+        * ``'assume'`` —— 默认，**保持旧行为**：照样按当日出场价成交。
+          这是乐观的：一字跌停意味着当天卖不掉，真实成交只能更晚、通常更低。
+        * ``'drop'``   —— 该行剔除，计入原因账 ``exit_not_sellable``。
+        * ``'delay'``  —— 顺延到之后 ``max_delay`` 个交易日内第一个
+          **可卖且有价**的日子，实际持有期因此长于 ``h``（要写进报告）。
+          顺延不到就剔除，计入 ``exit_blocked``。
+
+        ⚠️ 非 ``'assume'`` 时必须给 ``tradability`` —— 没有它就无法判断卖不卖得掉，
+        库会**明确报错**而不是假装处理了。
+        ⚠️ **退市行不归本策略管**：它们按 ``delist_policy`` 清算（"股票没了"与
+        "今天卖不掉"是两件事）。否则 ``delist_policy='last_price'`` 会被
+        ``exit_policy='drop'`` 整个推翻。
+        ⚠️ **退市行不归本策略管**：它们按 ``delist_policy`` 清算（"股票没了"与
+        "今天卖不掉"是两件事）。否则 ``delist_policy='last_price'`` 会被
+        ``exit_policy='drop'`` 整个推翻。
     """
 
     entry: str = 'next_open'
@@ -103,6 +122,7 @@ class ReturnModel:
     new_stock_days: int = 60
     delist_policy: str = 'nan'
     delist_return: float = 0.0
+    exit_policy: str = 'assume'
 
     def __post_init__(self):
         if self.entry not in ENTRY_MODES:
@@ -114,6 +134,9 @@ class ReturnModel:
         if self.policy not in POLICIES:
             fail('ReturnModel', 'bad_policy',
                  f"policy 只能是 {POLICIES}，收到 {self.policy!r}")
+        if self.exit_policy not in EXIT_POLICIES:
+            fail('ReturnModel', 'bad_exit_policy',
+                 f"exit_policy 只能是 {EXIT_POLICIES}，收到 {self.exit_policy!r}")
         if self.delist_policy not in DELIST_POLICIES:
             fail('ReturnModel', 'bad_delist_policy',
                  f"delist_policy 只能是 {DELIST_POLICIES}，"
@@ -138,7 +161,11 @@ class Returns:
     df : DataFrame
         索引 ``(date, asset)``（= **信号日**），列见模块文档。
     ledger : dict[int, dict]
-        每个持有期的剔除原因账：``{h: {'limit_up': 12, 'suspended': 3, ...}}``。
+        每个持有期的原因账：``{h: {'limit_up': 12, 'suspended': 3, ...}}``。
+        含**剔除原因**（⚠️ **不构成严格划分** —— 同一行可能被两类命中，所以
+        ``Σ(剔除原因) >= dropped``；恒成立的是 ``dropped == total − tradable``）
+        与**处理说明**（``delist_filled`` / ``exit_delayed`` —— 那些行仍在样本里）。
+        见 :func:`_ledger` 的分类说明。
     model : ReturnModel
     """
 
@@ -196,6 +223,13 @@ def forward_returns(prices, calendar, horizons, *, tradability=None,
             fail('returns', 'missing_column',
                  f'缺 `{c}`。收益计算**必须**用复权价 —— '
                  f'原始价在除权日会有假跳变。')
+
+    if model.exit_policy != 'assume' and tradability is None:
+        fail('returns', 'exit_policy_needs_tradability',
+             f"exit_policy={model.exit_policy!r} 需要可成交性数据：没有 tradability "
+             f"就判断不出出场日卖不卖得掉，不能假装处理了。\n"
+             f"  修法：tradability=compute_tradability(prices, calendar=…)，"
+             f"或改回 exit_policy='assume'（默认，保持旧口径）。")
 
     idx = df.index
     if not idx.is_monotonic_increasing:
@@ -264,19 +298,35 @@ def forward_returns(prices, calendar, horizons, *, tradability=None,
             px_use = np.where(delisted, last_pxs * (1.0 + model.delist_return),
                               exit_px)
 
+        # ★ 出场侧可成交性：默认 'assume' 时**完全走原路径**（逐位不变）
+        blocked = np.zeros(len(idx), dtype=bool)
+        n_delayed = 0
+        exit_dates_out = exit_dates
+        if model.exit_policy != 'assume':
+            exit_dates_out, px_use, blocked, n_delayed = _apply_exit_policy(
+                df, assets, exit_dates, px_use, tradability, model, calendar,
+                f'adj_{model.exit_price}', exempt=delisted)
+
         fwd = px_use / entry_px - 1
         tot = (1 + fwd) * (1 + gap) - 1
         nan_px = ~np.isfinite(fwd)
-        keep = tradable.values & ~nan_px
+        keep = tradable.values & ~nan_px & ~blocked
 
         out[f'forward_return_{h}'] = np.where(keep, fwd, np.nan)
         out[f'overnight_gap_{h}'] = np.where(keep, gap, np.nan)
         out[f'total_return_{h}'] = np.where(keep, tot, np.nan)
-        out[f'exit_date_{h}'] = exit_dates
+        out[f'exit_date_{h}'] = exit_dates_out
         out[f'tradable_{h}'] = keep
         out[f'delisted_{h}'] = delisted          # 是否走了退市约定
 
         led = _ledger(reason.values, entry_px, exit_px, keep)
+        if n_delayed:
+            led['exit_delayed'] = n_delayed            # 顺延到下一个可卖日
+        # ★ 只数「**因出场不可卖才被剔**」的行：本来就会被入场判据剔掉的
+        #   不能重复计入，否则台账的"dropped == Σ剔除原因"就对不上了。
+        n_blocked = int((blocked & tradable.values & ~nan_px).sum())
+        if n_blocked:
+            led['exit_not_sellable'] = n_blocked       # 剔除原因：出场日卖不出且顺延不到
         n_fill = int((delisted & keep).sum())
         if n_fill:
             led['delist_filled'] = n_fill
@@ -288,8 +338,81 @@ def forward_returns(prices, calendar, horizons, *, tradability=None,
     return Returns(df=out, ledger=ledger, model=model)
 
 
+def _exit_can_sell(tradability, dates, assets):
+    """出场日能不能卖（``can_sell_open``；退化为 ``~suspended``）。"""
+    tdf = getattr(tradability, 'df', tradability)
+    cols = set(tdf.columns)
+    if 'can_sell_open' not in cols and 'suspended' not in cols:
+        fail('returns', 'bad_tradability',
+             f'可成交性表缺 `can_sell_open` / `suspended`；实际列：{sorted(cols)[:12]}')
+    idx2 = pd.MultiIndex.from_arrays([dates, assets], names=['date', 'asset'])
+    if 'can_sell_open' in cols:
+        s = tdf['can_sell_open'].reindex(idx2).values
+    else:
+        s = ~tdf['suspended'].reindex(idx2).fillna(True).values
+    return pd.Series(s, index=range(len(dates)),
+                     dtype='boolean').fillna(False).astype(bool).values
+
+
+def _apply_exit_policy(df, assets, exit_dates0, px0, tradability, model,
+                       calendar, exit_col, exempt=None):
+    """出场日不可卖时按 ``model.exit_policy`` 处理。
+
+    返回 ``(exit_dates, px, blocked, n_delayed)``：``blocked`` 是最终仍不可卖
+    （调用方据此剔除）的行；``n_delayed`` 是顺延成功、换了出场日的行数。
+
+    ``exempt`` 里的行**不归本策略管**：退市行（``delisted``）按
+    ``model.delist_policy`` 清算 —— 那是"股票没了"，不是"今天卖不掉"。
+    两者混在一起会出事：实测 ``delist_policy='last_price'`` 配
+    ``exit_policy='drop'`` 时，退市行会在出场日被判"卖不出"而剔掉，
+    **把退市约定整个推翻**（tradable 12 → 7）。
+
+    ⚠️ 顺延只认「**可卖且当日确有价**」的日子 —— 只看"有价"会把停牌/退市后的
+    陈旧价当成交价，只看"可卖"会取到 NaN。
+    """
+    dates = np.array(exit_dates0, dtype='datetime64[ns]')
+    px = np.array(px0, dtype=float)
+    blocked = ~(_exit_can_sell(tradability, dates, assets) & np.isfinite(px))
+    if exempt is not None:
+        blocked = blocked & ~np.asarray(exempt, dtype=bool)   # 退市行交给 delist_policy
+    if model.exit_policy == 'drop':
+        return dates, px, blocked, 0
+
+    n_delayed = 0
+    resolved = ~blocked
+    for step in range(1, int(model.max_delay) + 1):
+        todo = blocked & ~resolved
+        if not todo.any():
+            break
+        cand = _shift_dates(exit_dates0, calendar, step)     # 从原出场日往后 step 格
+        idx2 = pd.MultiIndex.from_arrays([cand, assets], names=['date', 'asset'])
+        px2 = df[exit_col].reindex(idx2).values
+        ok = todo & _exit_can_sell(tradability, cand, assets) & np.isfinite(px2)
+        if ok.any():
+            dates[ok] = cand[ok]
+            px[ok] = px2[ok]
+            resolved |= ok
+            n_delayed += int(ok.sum())
+    return dates, px, blocked & ~resolved, n_delayed
+
+
 def _ledger(reason, entry_px, exit_px, keep):
-    """每个持有期的剔除原因账 —— **每一类剔除都要能回答"为什么、多少条"**。"""
+    """每个持有期的剔除原因账 —— **每一类剔除都要能回答"为什么、多少条"**。
+
+    键分两类，别混：
+
+    * **剔除原因**（这些行不在样本里）：``limit_up`` / ``limit_down`` /
+      ``suspended`` / ``new_stock`` / ``not_tradable`` / ``no_entry_price`` /
+      ``no_exit_price`` / ``delisted_dropped`` / ``exit_not_sellable``。
+
+      ⚠️ 这些键**不构成严格划分**：同一行可能同时被入场侧判据和出场侧缺价命中
+      （实测：一行既 ``limit_up``、出场日又落在面板之外 → 两个键各记一次），
+      所以 ``Σ(剔除原因) >= dropped``。唯一恒成立的是
+      ``dropped == total − tradable`` —— 别拿 Σ 去对账。
+    * **处理说明**（这些行**仍在**样本里，只是处理方式特殊）：``delist_filled``
+      （按退市约定清算）、``exit_delayed``（顺延到下一个可卖日）。
+      它们**不计入**上面那个和 —— 报了它们只会让账对不上。
+    """
     led = {}
     for r in ('limit_up', 'limit_down', 'suspended', 'new_stock', 'not_tradable'):
         n = int((reason == r).sum())
