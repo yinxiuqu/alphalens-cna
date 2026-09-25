@@ -117,19 +117,44 @@ def test_report_is_deterministic():
 
 
 def test_save_frames_roundtrip():
-    """★ 存盘 round-trip：写出去的每张表读回来列与行数都不变，且零降级。"""
+    """★ 存盘 round-trip：写出去的表读回来列与行数不变；**降级必须被记录**。
+
+    ⚠️ CI 只装 `.[dev]`（**没有 pyarrow**）→ parquet 写不了，库会降级成 CSV。
+    所以这里**按实际格式**读回，并且只断言库真正承诺的东西：
+      · 每张表都记了格式（``save_report['formats']``）
+      · 凡是降级成 CSV 的，都要在 ``save_report['downgraded']`` 里有原因
+        —— 0.1.3 的约定：格式悄悄变了调用方必须知道
+      · 读回来的行数一致、原列都在
+    （此前这里硬读 parquet 且断言"零降级"，本地装了 pyarrow 才过 ——
+      CI 无 pyarrow，三个 Python 版本一起挂，就是这条造成的。）
+    """
     f, px, u, cal = mk(6)
     rep = acna.build_report(f, px, acna.Calendar(cal), horizons=(1, 5), quantiles=3,
                             universe=u, name='x')
     tmp = tempfile.mkdtemp()
     rep.save(tmp, kind='frames')
-    assert not rep.save_report.get('downgraded'), rep.save_report.get('downgraded')
+    fmts = rep.save_report.get('formats', {})
+    downgraded = dict(rep.save_report.get('downgraded') or [])
+    assert fmts, 'save_report 必须记录每张表的格式'
+    n_checked = 0
     for name, frame in rep.frames().items():
         if frame is None:
             continue
-        back = pd.read_parquet(os.path.join(tmp, f'{name}.parquet'))
-        assert list(back.columns) == list(frame.columns), f'{name} 列不一致'
+        assert name in fmts, f'{name} 没有记录格式'
+        fmt = fmts[name]
+        if fmt == 'parquet':
+            assert name not in downgraded, f'{name} 没降级却出现在 downgraded 里'
+            back = pd.read_parquet(os.path.join(tmp, f'{name}.parquet'))
+        elif fmt == 'csv':
+            assert name in downgraded, f'{name} 降级成 CSV 却没记录原因'
+            back = pd.read_csv(os.path.join(tmp, f'{name}.csv'))
+        else:
+            raise AssertionError(f'{name} 的格式异常：{fmt!r}')
         assert len(back) == len(frame), f'{name} 行数不一致'
+        missing = [c for c in frame.columns if c not in back.columns]
+        assert not missing, f'{name} 丢列：{missing}'
+        n_checked += 1
+    assert n_checked >= 10, f'只检查了 {n_checked} 张表，太少'
 
 
 def test_hfq_qfq_returns_are_identical():
