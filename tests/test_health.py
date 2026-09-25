@@ -466,7 +466,11 @@ def test_extreme_move_missing_adj_is_not_pass():
     f = find(acna.health_check(prices=_mk_extreme(3, 0, no_adj_col=True)), '极端涨跌')
     assert f.severity == 'warn', f.summary
     assert '复权价缺失' in f.summary
-    assert '正常' not in f.summary.split('：')[1] or '缺失' in f.summary
+    # ★ 缺失绝不能被读成"已覆盖" —— 这三句都能真失败（此前这里写的是一条
+    #   `... or '缺失' in f.summary` 的断言，恒为真，等于没测）
+    assert '已覆盖' not in f.summary, f.summary
+    assert '复权价连续' not in f.summary, f.summary
+    assert '复权后正常' not in f.summary, f.summary
     assert f.metric == 3.0
     assert set(f.detail['问题']) == {'复权价缺失'}
 
@@ -492,3 +496,39 @@ def test_extreme_move_warn_text_omits_zero_buckets():
     f = find(acna.health_check(prices=_mk_extreme(3, 0, no_adj_col=True)), '极端涨跌')
     assert '0 条复权后' not in f.summary, f.summary
     assert '0 条已被复权抹平' not in f.summary, f.summary
+
+
+def test_extreme_move_buckets_partition_and_align():
+    """★ 三档必须**恰好划分**全部触发行，且明细与触发行一一对齐。
+
+    这是这次归因重写的核心不变量：任何一行的标签都必须能从
+    「已覆盖 / 复权后仍大 / 复权价缺失」里唯一确定，不许重叠、不许漏。
+    用随机组合扫（含无 adj_close 列、混合缺失）—— 以前那种"从 ar 上判缺失"
+    的错误写法会在这里露馅（ffill 之后缺失行的收益是 0%，会被算进"已覆盖"）。
+    """
+    rng = np.random.default_rng(0)
+    for trial in range(12):
+        n_evt = int(rng.integers(2, 30))
+        n_good = int(rng.integers(0, n_evt + 1))
+        n_mis = int(rng.integers(0, n_evt - n_good + 1))
+        no_col = bool(rng.integers(0, 2))
+        f = find(acna.health_check(
+            prices=_mk_extreme(n_evt, n_good, n_missing_adj=n_mis, no_adj_col=no_col)),
+            '极端涨跌')
+        n_flag = int(f.metric)
+        d = f.detail
+        assert len(d) == n_flag, f'明细 {len(d)} 行 ≠ 触发 {n_flag} 行'
+        assert d['raw_return'].notna().all()
+        lab = d['问题']
+        # ① 三档齐全且互斥（value_counts 之和 = 触发数）
+        assert set(lab) <= {'已覆盖（因子已跟上）', '复权后仍大', '复权价缺失'}
+        assert len(d) == int((lab == '已覆盖（因子已跟上）').sum()) \
+            + int((lab == '复权后仍大').sum()) + int((lab == '复权价缺失').sum())
+        # ② 标签与 adj_return 自洽。**只查反向**：正向查不了 —— 缺失档的
+        #    adj_return 会被 ffill 填成 0%（正是当初误判的来源），所以
+        #    "缺失档的 adj_return 必须是 NaN"是**错**的断言，别写；
+        #    同理也不能用 `... or True` 糊过去（那等于没测）。
+        assert d.loc[lab != '复权价缺失', 'adj_return'].notna().all()
+        # ③ 无 adj_close 列时，全部必须归到"缺失"
+        if no_col:
+            assert set(lab) == {'复权价缺失'}
