@@ -473,7 +473,7 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         需含 ``value``（会归一成 ``factor``）。
     prices : PricePanel | DataFrame
         需三价并存（见 ``docs/输入数据规格.md``）。
-    calendar : Calendar
+    calendar : Calendar | DatetimeIndex
     horizons : tuple[int]
     n_trials : int, 可选
         **一共测过多少个假设。** 不给就不做多重检验校正，并在结论里**明说**。

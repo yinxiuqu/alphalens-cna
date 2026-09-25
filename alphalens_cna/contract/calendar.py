@@ -23,6 +23,21 @@ import pandas as pd
 from .errors import fail
 
 
+def as_calendar(calendar):
+    """把 ``Calendar`` 或裸 ``DatetimeIndex`` 统一成 :class:`Calendar`。
+
+    本库多个入口一直两种都收（``health`` / ``event`` / ``compat`` 用
+    ``getattr(calendar, 'index', calendar)``），但 ``forward_returns`` /
+    ``compute_tradability`` / ``build_report`` / ``check_parity`` 只认
+    前者 —— 传 DatetimeIndex 会抛裸
+    ``AttributeError: 'DatetimeIndex' object has no attribute 'index'``。
+    口径统一到这里，别再各写各的。
+    """
+    if isinstance(calendar, Calendar):
+        return calendar
+    return Calendar(pd.DatetimeIndex(getattr(calendar, 'index', calendar)))
+
+
 class Calendar:
     """交易日历。
 

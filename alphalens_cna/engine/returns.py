@@ -36,6 +36,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 import pandas as pd
 
+from ..contract.calendar import as_calendar
 from ..contract.errors import fail
 
 __all__ = ['ReturnModel', 'Returns', 'forward_returns', 'ENTRY_MODES',
@@ -169,8 +170,9 @@ def forward_returns(prices, calendar, horizons, *, tradability=None,
     ----------
     prices : PricePanel | DataFrame
         需含 ``adj_open`` / ``adj_close``（**收益一律用复权价**）。
-    calendar : Calendar
+    calendar : Calendar | DatetimeIndex
         交易日历。**所有日期运算都走它**，不用 pandas 的 freq 推断。
+        两种写法都收（裸 DatetimeIndex 会被包成 Calendar）。
     horizons : int | Sequence[int]
         持有期（**交易日数**）。
     tradability : DataFrame, 可选
@@ -311,8 +313,9 @@ def _shift_dates(dates, calendar, n):
 
     不用 ``pd.DateOffset`` / ``freq`` —— 那会在非日频或停牌处出错。
     """
-    cal = calendar.index.values
-    pos = calendar.index.get_indexer(pd.DatetimeIndex(dates))
+    _cal = as_calendar(calendar).index      # ★ 也收裸 DatetimeIndex
+    cal = _cal.values
+    pos = _cal.get_indexer(pd.DatetimeIndex(dates))
     new = pos + n
     ok = (pos >= 0) & (new >= 0) & (new < len(cal))
     out = np.full(len(dates), np.datetime64('NaT'), dtype='datetime64[ns]')

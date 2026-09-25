@@ -45,7 +45,10 @@ class Verdict:
     net_return : float
         扣成本后的多空收益（给了才填）。
     cost : float
-        估算的交易成本。
+        估算的交易成本，**逐期成本的简单求和**。
+        ⚠️ 报告里的「毛 → 净（成本）」不是减法关系：毛是 `Π(1+r)−1`、
+        净是 `Π(1+r−c)−1`（**逐期**扣成本后复利），所以 `净 ≈ 毛 − 成本`
+        只在一阶近似下成立。
     stability : float
         子样本稳定性 0–1（M2 才有，M0 为 NaN）。
     estimates : list[Estimate]

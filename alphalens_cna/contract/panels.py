@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 
 from .errors import ContractError, describe_rows, fail
 
@@ -64,6 +65,7 @@ class _Panel:
         self._check_columns()
         self._check_dtypes()
         self._check_numeric()
+        self._check_finite()
         self._check_positive()
         self.validate_extra()
 
@@ -106,6 +108,26 @@ class _Panel:
             if not pd.api.types.is_numeric_dtype(s):
                 fail(self.contract, 'dtype',
                      f'列 `{col}` 必须是数值，收到 {s.dtype}')
+
+    def _check_finite(self):
+        """±inf 不是合法数值。**NaN 是合法缺失**（停牌 / 未上市），inf 不是。
+
+        `_check_positive` 判的是 `<= 0`，正的 inf 满足 `> 0` 会直接穿过去，
+        然后在收益 / 相关系数 / 方差里算出 NaN 或 inf —— 属于垃圾进垃圾出，
+        宁可在门口拦下。
+        """
+        for col in self.numeric:
+            if col not in self._df.columns:
+                continue
+            v = pd.to_numeric(self._df[col], errors='coerce').to_numpy(
+                dtype='float64', na_value=np.nan)
+            bad = np.isinf(v)
+            if bad.any():
+                fail(self.contract, 'non_finite',
+                     f'列 `{col}` 有 {int(bad.sum())} 行是 ±inf：'
+                     f'{describe_rows(self._df.index[bad])}\n'
+                     f'  含义：inf 不是缺失（缺失应当用 NaN），'
+                     f'它会让收益、相关系数、方差全部变成 NaN / inf。')
 
     def _check_positive(self):
         for col in self.positive:

@@ -38,6 +38,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ..contract.calendar import as_calendar
 from ..contract.errors import fail
 
 __all__ = [
@@ -297,7 +298,7 @@ def compute_tradability(prices, calendar=None, *, names=None,
 
     if calendar is not None:
         od = pd.DatetimeIndex(idx.get_level_values('date').unique())
-        calendar.validate_dates(od, contract='tradability')
+        as_calendar(calendar).validate_dates(od, contract='tradability')
     if excluded_note:
         out.attrs['new_stock_filter'] = excluded_note
     return out

@@ -229,3 +229,40 @@ def test_tail_rows_are_nan():
 
 if __name__ == '__main__':
     sys.exit(pytest.main([__file__, '-q']))
+
+
+# ── 2026-09-25 审计：calendar 参数两种写法都要收 ──────────────────
+def test_calendar_accepts_bare_datetimeindex():
+    """★ ``Calendar`` 与裸 ``DatetimeIndex`` 必须等价。
+
+    此前 `forward_returns` / `compute_tradability` / `build_report` /
+    `check_parity` 只认前者，传 DatetimeIndex 会抛裸
+    ``AttributeError: 'DatetimeIndex' object has no attribute 'index'``；
+    而 `health_check` / `align_event_windows` 一直两种都收 —— 同一个参数
+    在不同入口接受度不同。现在统一走 `contract.calendar.as_calendar`。
+    """
+    import numpy as np
+    import pandas as pd
+    dates = pd.bdate_range('2023-01-02', periods=25)
+    assets = [f'{i:06d}' for i in range(6)]
+    idx = pd.MultiIndex.from_product([dates, assets], names=['date', 'asset'])
+    rng = np.random.default_rng(0)
+    close = (np.tile(rng.uniform(5, 50, len(assets)), len(dates))
+             * np.exp(np.cumsum(rng.normal(0, .01, len(idx)))))
+    px = pd.DataFrame({'raw_close': close}, index=idx)
+    for c, k in (('open', 1.0), ('high', 1.01), ('low', .99)):
+        px[f'raw_{c}'] = close * k
+    px['prev_close'] = px.groupby(level='asset')['raw_close'].shift(1).fillna(px['raw_close'])
+    px['adj_factor'] = 1.0
+    for c in ('open', 'high', 'low', 'close'):
+        px[f'adj_{c}'] = px[f'raw_{c}']
+    px['volume'] = 1e5
+
+    cal = acna.Calendar(dates)
+    a = acna.forward_returns(px, cal, [1, 5]).df
+    b = acna.forward_returns(px, dates, [1, 5]).df
+    assert a.equals(b), 'Calendar 与 DatetimeIndex 的前向收益不一致'
+
+    t1 = acna.compute_tradability(px, calendar=cal)
+    t2 = acna.compute_tradability(px, calendar=dates)
+    assert t1.equals(t2), 'Calendar 与 DatetimeIndex 的可成交性不一致'

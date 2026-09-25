@@ -6,6 +6,26 @@
 ## [Unreleased]
 
 ### 修复
+- **`calendar` 参数在不同入口的接受度不一致**（连带 4 个入口崩溃）。
+  `forward_returns` / `compute_tradability` / `build_report` / `check_parity` 只认
+  `Calendar` 对象，传裸 `DatetimeIndex` 会抛
+  `AttributeError: 'DatetimeIndex' object has no attribute 'index'`；
+  而 `health_check` / `align_event_windows` 一直两种都收（库里另有三处写着
+  `getattr(calendar, 'index', calendar)`）。口径统一到
+  `contract.calendar.as_calendar`，两处崩溃点（`_shift_dates`、
+  `compute_tradability` 的 `validate_dates`）修好 —— 实测两种输入的前向收益、
+  可成交性、parity 结果与**整份报告**完全一致。
+- **契约补上 ±inf 检查**：`_check_positive` 判的是 `<= 0`，负 inf 会被拦、
+  **正的 inf 会直接穿过去**，然后在收益 / 相关系数 / 方差里算出 NaN 或 inf。
+  新增 `_check_finite`（**NaN 仍是合法缺失** —— 停牌照旧放行，只有 inf 被拒）。
+- 文档：`Verdict.cost` 的注释说清「毛 → 净（成本）」**不是减法** ——
+  毛是 `Π(1+r)−1`、净是 `Π(1+r−c)−1`（逐期扣成本后复利），
+  `净 ≈ 毛 − 成本` 只在一阶近似下成立。
+- 新增 `tests/test_invariants.py`：把 7 条恒等式固化下来 —— 台账对账
+  （输入 = 输出 + Σ剔除）、前向收益的**已知答案**（`adj_close(t+1+h)/adj_open(t+1)−1`）、
+  `total = (1+fwd)(1+gap) − 1`、`cost_bps=0 ⇒ net == gross`、报告确定性（同输入逐字节相同）、
+  存盘 frames round-trip、hfq/qfq 收益等价。
+
 - **loader 的构造参数没转发**（文档教的用法必崩）。`resolve()` 调
   `get_source(name)` 时漏传了 `**kw`，而注册表 `get_source(name, **kw)`
   本来就收 —— 于是 `acna.load_prices(source='parquet', root='~/mydata')`

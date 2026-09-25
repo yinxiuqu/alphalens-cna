@@ -273,3 +273,51 @@ def test_suspension_missing_on_both_sides_is_allowed():
               'adj_open', 'adj_high', 'adj_low', 'adj_close'):
         px.loc[row, c] = np.nan
     acna.PricePanel(px)                      # 不抛异常即通过
+
+
+# ── 2026-09-25 审计：±inf 必须拦下，NaN 必须放行 ───────────────────
+def _mk_price_edge():
+    dates = pd.bdate_range('2024-01-02', periods=3)
+    idx = pd.MultiIndex.from_product([dates, ['600000']], names=['date', 'asset'])
+    df = pd.DataFrame({c: [10.0, 10.3, 9.9] for c in
+                       ['raw_open', 'raw_high', 'raw_low', 'raw_close']}, index=idx)
+    df['prev_close'] = [10.0, 10.0, 10.0]
+    df['adj_factor'] = [1.0] * 3
+    df['volume'] = 1e5
+    for c in ('open', 'high', 'low', 'close'):
+        df[f'adj_{c}'] = df[f'raw_{c}']
+    return df
+
+
+def test_reject_positive_inf_price():
+    """★ ±inf 不是合法数值（`_check_positive` 判的是 `<= 0`，+inf 会穿过去）。"""
+    df = _mk_price_edge()
+    df.loc[df.index[1], 'raw_close'] = np.inf
+    with pytest.raises(ContractError) as e:
+        acna.PricePanel(df)
+    assert e.value.rule == 'non_finite'
+    assert 'raw_close' in str(e.value)
+
+
+def test_reject_negative_inf_factor():
+    df = _mk_price_edge()
+    df.loc[df.index[1], 'adj_factor'] = -np.inf
+    with pytest.raises(ContractError) as e:
+        acna.PricePanel(df)
+    assert e.value.rule == 'non_finite'
+
+
+def test_nan_is_still_a_legal_missing_value():
+    """反向：NaN 是规格里的缺失表示 —— 停牌两边都缺、或单边缺，都不许因为
+    「非有限」被拦（拦的是 inf，不是 NaN）。"""
+    df = _mk_price_edge()
+    row = df.index[1]
+    for c in ('raw_close', 'adj_close'):
+        df.loc[row, c] = np.nan
+    acna.PricePanel(df)                      # 停牌：两边都缺 → 放行
+
+    df2 = _mk_price_edge()
+    df2.loc[df2.index[1], 'adj_close'] = np.nan      # 单边缺 → 由 adjust_incomplete 管
+    with pytest.raises(ContractError) as e:
+        acna.PricePanel(df2)
+    assert e.value.rule == 'adjust_incomplete'
