@@ -147,6 +147,7 @@ __all__ = [
     'cross_sectional_regression', 'fama_macbeth', 'FMResult',
     # 事件研究与尾部统计（此前可取到但漏在 __all__ 外 —— 同一类不一致）
     'align_event_windows', 'event_summary', 'event_path_by_group',
+    'EventWindows',
     'tail_by_quantile', 'crash_spread', 'cvar', 'value_at_risk',
     'expected_shortfall', 'downside_deviation', 'tail_ratio', 'crash_stats',
     'shanken_inflation',

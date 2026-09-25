@@ -38,7 +38,14 @@ DEFAULT_BINS = 10
 
 def _ranks(factor):
     """按日切分并转向量；返回 (日期数组, 每个日期的排名分布矩阵)。"""
-    s = factor['value'] if isinstance(factor, pd.DataFrame) else factor
+    if isinstance(factor, pd.DataFrame):
+        if 'value' not in factor.columns:      # 裸 KeyError 看不出该改什么
+            fail('rank_entropy', 'factor_column',
+                 f"因子面板需要 `value` 列，实际列：{list(factor.columns)}。\n"
+                 f"  修法：把因子列改名为 `value`。")
+        s = factor['value']
+    else:
+        s = factor
     if not isinstance(s.index, pd.MultiIndex) or \
             list(s.index.names[:2]) != ['date', 'asset']:
         fail('rank_entropy', 'index',

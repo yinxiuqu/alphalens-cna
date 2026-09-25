@@ -165,7 +165,7 @@ def check_parity(factor, prices, calendar, horizons=(1, 5, 21), quantiles=5,
             f'差 {rep.n_ours - rep.n_alphalens:+,}）—— '
             f'下面只在**共同样本**上比对数值')
 
-    common = cr.data.index.intersection(af.index)
+    # 共同样本不必在这里切：`_cmp` 内部就是 join='inner'（见下方各检查）。
 
     # ── ① IC ────────────────────────────────────────────────────────
     if 'ic' in checks:

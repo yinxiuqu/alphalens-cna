@@ -208,19 +208,14 @@ class PricePanel(_Panel):
     ADJ_TOL = 1e-8
 
     def validate_extra(self):
-        df = self._df
-        # raw 与 adj 必须成对：required 已含全部，这里查的是"只给一半"的情况
-        has_raw = [c for c in df.columns if c.startswith('raw_')]
-        has_adj = [c for c in df.columns if c.startswith('adj_')]
-        if has_adj and 'adj_factor' not in df.columns:
-            fail(self.contract, 'adjust_incomplete',
-                 f'有 {has_adj} 却没有 `adj_factor` —— 无法换复权口径。\n'
-                 f'  修法：补上 `adj_factor`，或只给 raw_* 让库自算。')
-        if has_adj and not has_raw:
-            fail(self.contract, 'adjust_incomplete',
-                 f'有 {has_adj} 却没有 `raw_*` —— 无法判定涨跌停。\n'
-                 f'  修法：补上原始不复权价（制度判定**必须**用原始价）。')
-        # ★ 自洽：adj_* == raw_* * adj_factor
+        # ⚠️ 这里原本有两个"raw 与 adj 必须成对"的分支（只给 adj_* / 只给 raw_*），
+        #    但它们**永远执行不到** —— `validate()` 先跑 `_check_columns()`，而
+        #    `required` 里 raw_* 与 adj_* 全都列着，缺哪个都会先在那边报
+        #    `missing_columns`。留着不只是冗余，还会撒谎：其中一句写着
+        #    "或只给 raw_* 让库自算"，而实测只给 raw_* 会被 missing_columns 拒绝
+        #    （规格里 adj_* 本来就是必需列，示例就是让用户自己乘出复权价）。
+        #    成对性的**正确表述**在类 docstring 里，这里删掉以免又教错人。
+        # ★ 自洽：adj_* == raw_* * adj_factor（含缺失检查）
         self._check_self_consistent()
 
     def _check_self_consistent(self):

@@ -45,12 +45,13 @@ RAW = ('raw_open', 'raw_high', 'raw_low', 'raw_close')
 ADJ = ('adj_open', 'adj_high', 'adj_low', 'adj_close')
 
 
-def resolve(source):
+def resolve(source, **kw):
     """把 source 参数解析成适配器实例。
 
     * ``None``        → 报错并提示怎么给
-    * ``str``         → 查注册表（``'parquet'`` / ``'dataframe'`` / …）
-    * 适配器实例/类    → 原样返回
+    * ``str``         → 查注册表（``'parquet'`` / ``'dataframe'`` / …），``**kw`` 传给构造函数
+    * 适配器类        → 用 ``**kw`` 实例化
+    * 适配器实例      → 原样返回（``**kw`` 留给它的 ``prices()`` / ``factor()``）
     """
     if source is None:
         fail('loader', 'no_source',
@@ -59,9 +60,12 @@ def resolve(source):
              "  2. 公开目录约定：acna.load_prices(source='parquet', root='~/mydata')\n"
              '  3. 自己写适配器：见 examples/（库不绑任何私有目录）')
     if isinstance(source, str):
-        return get_source(source)
+        # ★ 构造参数必须转发下去。`get_source` 本来就收 **kw，此前这里漏传 ——
+        #   于是文档里写的 `load_prices(source='parquet', root='~/mydata')` 必定
+        #   `TypeError: missing 'root'`（而 root 还被 **kw 塞给了 .prices()）。
+        return get_source(source, **kw)
     if isinstance(source, type):
-        return source()
+        return source(**kw)
     if isinstance(source, InputAdapter) or hasattr(source, 'prices'):
         return source
     fail('loader', 'bad_source',
@@ -69,6 +73,18 @@ def resolve(source):
 
 
 # --------------------------------------------------------------------------- #
+def _make_source(source, kw):
+    """构造适配器，并决定 ``**kw`` 归谁。
+
+    * ``source`` 是**字符串或类** → ``kw`` 是**构造参数**（如 parquet 的 ``root``），
+      构造完就不再往 ``prices()`` / ``factor()`` 传。
+    * ``source`` 是**实例** → 已经构造好了，``kw`` 交给它的方法。
+    """
+    if isinstance(source, (str, type)):
+        return resolve(source, **kw), {}
+    return resolve(source), kw
+
+
 def load_prices(source=None, start=None, end=None, adjust_source='computed',
                 xdxr=None, validate=True, **kw) -> PricePanel:
     """载入行情并包装成 :class:`PricePanel`。
@@ -88,8 +104,8 @@ def load_prices(source=None, start=None, end=None, adjust_source='computed',
     -------
     PricePanel
     """
-    src = resolve(source)
-    df = src.prices(start=start, end=end, **kw)
+    src, rest = _make_source(source, kw)
+    df = src.prices(start=start, end=end, **rest)
     if df is None or not len(df):
         fail('loader', 'no_prices', f'{src} 没返回行情数据')
 
@@ -148,8 +164,8 @@ def _fill_prev_close(df):
 def load_factor(name, source=None, start=None, end=None, validate=True,
                 **kw) -> FactorPanel:
     """载入因子并包装成 :class:`FactorPanel`。"""
-    src = resolve(source)
-    df = src.factor(name, start=start, end=end, **kw)
+    src, rest = _make_source(source, kw)
+    df = src.factor(name, start=start, end=end, **rest)
     if df is None or not len(df):
         fail('loader', 'no_factor', f'{src} 没返回因子 `{name}`')
     if 'value' not in df.columns:
@@ -169,10 +185,10 @@ def load_factor(name, source=None, start=None, end=None, validate=True,
 def load_calendar(source=None, start=None, end=None, **kw):
     """载入交易日历。数据源不给就退回"从行情日期推断"。"""
     from ...contract.calendar import Calendar
-    src = resolve(source)
-    c = src.calendar(start=start, end=end, **kw) if hasattr(src, 'calendar') else None
+    src, rest = _make_source(source, kw)
+    c = src.calendar(start=start, end=end, **rest) if hasattr(src, 'calendar') else None
     if c is None:
-        px = src.prices(start=start, end=end, **kw)
+        px = src.prices(start=start, end=end, **rest)
         if px is None or not len(px):
             fail('loader', 'no_calendar',
                  '数据源没给日历，也没行情可供推断。')
@@ -181,11 +197,11 @@ def load_calendar(source=None, start=None, end=None, **kw):
 
 
 def _load_optional(source, attr, cls, start, end, validate, **kw):
-    src = resolve(source)
+    src, rest = _make_source(source, kw)
     fn = getattr(src, attr, None)
     if fn is None:
         return None
-    df = fn(start=start, end=end, **kw)
+    df = fn(start=start, end=end, **rest)
     if df is None or not len(df):
         return None
     return cls(df, validate=validate)

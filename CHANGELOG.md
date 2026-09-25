@@ -5,6 +5,32 @@
 
 ## [Unreleased]
 
+### 修复
+- **loader 的构造参数没转发**（文档教的用法必崩）。`resolve()` 调
+  `get_source(name)` 时漏传了 `**kw`，而注册表 `get_source(name, **kw)`
+  本来就收 —— 于是 `acna.load_prices(source='parquet', root='~/mydata')`
+  （模块 docstring 与 `no_source` 报错文案里都这么写）必定
+  `TypeError: missing 'root'`，且 `root` 还被 `**kw` 塞给了 `.prices()`。
+  现在明确路由：**字符串/类**源的 `**kw` 是**构造参数**；**实例**源的 `**kw`**
+  交给它的 `prices()` / `factor()`。五个 loader（prices/factor/calendar/universe/
+  tradability）一并修好。
+- **体检层缺列/空面板的裸异常**：`health_check(factor=…)` 在列名不是 `value` 时抛
+  `KeyError: 'value'`，`rank_stability` 同样；现在给 `factor_column` 契约错误并
+  说明改成什么名字。`check_factor_panel` 的"因子冻结"分支在**空面板**上
+  `int(run.max())` 抛 `ValueError: cannot convert float NaN to integer`，现在报
+  `skip: 无因子观测`。
+- **顶层少导出 `EventWindows`**：它和兄弟（`FMResult`/`Verdict`/`DSRResult`…）
+  都在 `from .analysis import (...)` 里，却只有它没进 `__all__` ——
+  `import *` 拿不到。
+- **`docs/输入数据规格.md` 的"跑一次分析"示例根本跑不通**：它写的是设计稿里的
+  目标 API（`acna.analyze` / `acna.Spec`），库从未实现；且那块 5 天 × 3 只的
+  示意数据价格不随时间变、没有收益，真跑会报"样本不足以判断"。已换成
+  `build_report` 的自足可运行示例（已在文档上逐块执行验证）。
+- 清掉三处死代码：`PricePanel.validate_extra` 两个**永不执行**的成对性分支
+  （其中一句还谎称"只给 raw_* 让库自算"，实测会被 `missing_columns` 拒绝）、
+  `analysis/event.py` 的 `idx_ret`、`compat` 的 `common`，以及
+  `inference/__init__.py` 的重复导入。
+
 ### 破坏性变更（留给 0.2.0，不要放进 0.1.x 的 patch）
 - **契约补上缺失校验**：`raw_*` 有值的行上，`adj_*` 或 `adj_factor` 缺行现在会被
   `PricePanel` 拒绝（`adjust_incomplete`）。

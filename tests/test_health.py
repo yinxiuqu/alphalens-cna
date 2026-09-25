@@ -532,3 +532,37 @@ def test_extreme_move_buckets_partition_and_align():
         # ③ 无 adj_close 列时，全部必须归到"缺失"
         if no_col:
             assert set(lab) == {'复权价缺失'}
+
+
+def test_health_check_on_empty_panels_does_not_crash():
+    """★ 空面板（0 行）必须能出体检报告，不许崩在格式化字符串里。
+
+    此前 `check_factor_panel` 的"因子冻结"分支直接 `int(run.max())`，
+    空面板时 `run` 为空 → `max()` 是 NaN → `int(NaN)` 抛
+    `ValueError: cannot convert float NaN to integer`。
+    """
+    dates = pd.bdate_range('2024-01-02', periods=3)
+    idx = pd.MultiIndex.from_product([dates, ['600000']], names=['date', 'asset'])
+    empty_f = pd.DataFrame({'value': [], 'available_at': []}, index=idx[:0])
+    rep = acna.health_check(factor=empty_f)
+    freeze = find(rep, '因子冻结')
+    assert freeze.severity == 'skip', freeze.summary
+    assert '无因子观测' in freeze.summary
+
+    # 价格侧同理：空表也要出报告
+    empty_px = pd.DataFrame(columns=['raw_open', 'raw_high', 'raw_low', 'raw_close',
+                                     'prev_close', 'adj_factor', 'adj_open',
+                                     'adj_high', 'adj_low', 'adj_close'],
+                            index=idx[:0])
+    acna.health_check(prices=empty_px)
+
+
+def test_health_check_bad_factor_column_says_what_to_rename():
+    """★ 列名不对时给可执行的报错，而不是 `KeyError: 'value'`。"""
+    dates = pd.bdate_range('2024-01-02', periods=3)
+    idx = pd.MultiIndex.from_product([dates, ['600000']], names=['date', 'asset'])
+    bad = pd.DataFrame({'roe': [1.0, 2.0, 3.0]}, index=idx)
+    with pytest.raises(acna.ContractError) as e:
+        acna.health_check(factor=bad)
+    assert e.value.rule == 'factor_column'
+    assert 'value' in str(e.value) and 'roe' in str(e.value)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ..contract.errors import fail
 from .core import Finding
 
 __all__ = [
@@ -156,6 +157,14 @@ def check_factor_panel(factor, th):
     返回**两条**结论：``因子截面``（每日股票数 + 唯一值）与 ``因子陈旧度``。
     """
     out = []
+    # ★ 缺列要说人话。此前是裸 `factor['value']` → KeyError: 'value'，
+    #   看不出该改什么（health_check 是诊断工具，故意不走契约全量校验，
+    #   但**结构约定**仍要明确报出来）。
+    if 'value' not in getattr(factor, 'columns', []):
+        fail('health', 'factor_column',
+             f"因子面板缺少 `value` 列，实际列：{list(getattr(factor, 'columns', []))}。\n"
+             f"  约定：因子列名固定为 `value`（`FactorPanel` 要求 `value` + `available_at`）。\n"
+             f"  修法：`factor = factor.rename(columns={{'你的因子列': 'value'}})`。")
     v = factor['value']
     n_by_date = v.groupby(level='date').size()
     u_by_date = v.groupby(level='date').nunique()
@@ -186,6 +195,11 @@ def check_factor_panel(factor, th):
                            f'{len(frozen):,} 只票的因子值连续 '
                            f'≥{th["freeze_days"]} 期不变（疑似数据未更新）',
                            float(frozen.max()), detail, th['freeze_days']))
+    elif not len(run):
+        # ★ 空因子面板（0 行）→ run 为空 → `run.max()` 是 NaN → `int(NaN)` 直接
+        #   ValueError（格式化字符串里崩，最难看）。空输入要说人话，别崩。
+        out.append(Finding('因子冻结', 'skip', '无因子观测，跳过',
+                           0.0, None, th['freeze_days']))
     else:
         out.append(Finding('因子冻结', 'pass',
                            f'无长期不变的票（最长 {int(run.max())} 期）',

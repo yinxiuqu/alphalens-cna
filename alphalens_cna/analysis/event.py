@@ -173,7 +173,6 @@ def align_event_windows(prices, events, calendar, *, window=DEFAULT_WINDOW,
     date_col = 'date' if 'date' in ev_frame.columns else ev_frame.columns[0]
     asset_col = 'asset' if 'asset' in ev_frame.columns else ev_frame.columns[1]
     carry = [c for c in ev_frame.columns if c not in (date_col, asset_col)]
-    idx_ret = ret.index
 
     for i, r in enumerate(ev_frame.itertuples(index=False)):
         d, a = getattr(r, date_col), getattr(r, asset_col)

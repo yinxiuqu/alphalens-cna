@@ -58,7 +58,6 @@ from .newey_west import (
     nw_variance,
     variance_inflation,
 )
-from .verdict import Verdict, assess
 
 __all__ = [
     'Estimate', 'estimate_from_series', 'estimates_to_frame',
