@@ -151,7 +151,11 @@ def test_save_frames_roundtrip():
         else:
             raise AssertionError(f'{name} 的格式异常：{fmt!r}')
         assert len(back) == len(frame), f'{name} 行数不一致'
-        missing = [c for c in frame.columns if c not in back.columns]
+        # ⚠️ CSV **不保 dtype**：整数列名（如持有期 1/5）读回来是字符串 "1"/"5"。
+        #    所以按**字符串**比对列名 —— 这不是库的问题，是 CSV 格式的固有性质，
+        #    也正是"降级必须被记录"那条约定存在的原因。
+        have = {str(c) for c in back.columns}
+        missing = [c for c in frame.columns if str(c) not in have]
         assert not missing, f'{name} 丢列：{missing}'
         n_checked += 1
     assert n_checked >= 10, f'只检查了 {n_checked} 张表，太少'
