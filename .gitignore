@@ -48,3 +48,6 @@ drafts/
 # ── PyPI 安装验证用的隔离目录
 .pypi_test*/
 .pypi_test_scripts/
+
+# ── scripts/ci_local.sh 用的 CI 等价环境
+.ci-venv/

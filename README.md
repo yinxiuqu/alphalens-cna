@@ -160,6 +160,28 @@ M0 / M1 完成，M2 进行中。
 | 报告 | `report/`（tidy 表 + Markdown，**零绘图依赖**） |
 | 对拍 | `compat/`（与 alphalens 逐位对拍） |
 
+## 开发与自检
+
+```bash
+pip install -e ".[dev]"      # 开发依赖（只有 pytest）
+pytest -q                    # 跑测试
+
+# ★ 推送前先跑这个 —— 它复刻 CI 的依赖集，专治"本地绿、CI 红"
+scripts/ci_local.sh          # ≈ 三个 CI job：测试 / 零绘图依赖 / 等价性回归
+scripts/ci_local.sh --quick  # 跳过对拍 job（不装 alphalens-reloaded）
+```
+
+**为什么不能只跑 `pytest`**：CI 的依赖集和日常开发环境不一样，本项目在这上面吃过两次亏——
+
+| 坑 | 现象 |
+|---|---|
+| `dev` extras 里**没有 pyarrow**，CI 只装 `.[dev]` | `save(kind='frames')` 会按约定降级写 CSV（并把原因记进 `save_report['downgraded']`），本地装了 pyarrow 就写 parquet —— 任何硬依赖 parquet 的测试**只在 CI 挂** |
+| CI 装的是**最新** pandas/numpy（约束只写到 `pandas>=1.5`） | 实测 CI 上是 pandas 3.0.6 + numpy 2.4.6，本地可能还是 2.x —— 弃用与行为变更只在 CI 暴露 |
+
+`ci_local.sh` 用独立的 venv（默认 `.ci-venv/`，已 gitignore）复刻这套依赖，
+开头会打印解释器/pandas/numpy 版本与"有没有 pyarrow"，让环境差异一眼可见。
+解释器低于 3.9 时会提前拦下并提示（系统里的 `python3` 可能就是 3.8）。
+
 ## 许可证
 
 Apache License 2.0 —— 见 [LICENSE](LICENSE)。
