@@ -26,6 +26,14 @@
   读者不必自己回头数。函数 docstring 与 `docs/cases/体检层报告.md`（含 `outputs/`
   同名拷贝）里同样判反的说法一并改正。
 
+### 破坏性变更（留给 0.2.0，不要放进 0.1.x 的 patch）
+- **契约补上缺失校验**：`raw_*` 有值的行上，`adj_*` 或 `adj_factor` 缺行现在会被
+  `PricePanel` 拒绝（`adjust_incomplete`）。
+  此前自洽校验的判据是 `diff > tol`，而 `NaN > tol` 恒为 False —— 缺行被"自洽"放行，
+  一路穿到体检层就成了上面那条「复权价连续」的假 all-clear。
+  停牌（raw 与 adj **两边都缺**）不受影响，仍按输入规格允许。
+  ⚠️ 会拒绝以前能跑的面板，属破坏性变更：按约定进 0.2.0，不走 0.1.x patch。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

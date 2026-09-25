@@ -237,3 +237,39 @@ def test_adjust_agreement_catches_bad_data():
 
 if __name__ == '__main__':
     sys.exit(pytest.main([__file__, '-q']))
+
+
+# ── 2026-09-25 审计：自洽校验的 NaN 洞 ─────────────────────────────
+def test_reject_adj_missing_where_raw_exists():
+    """★ 原始价在、复权价缺 —— 必须拦下。
+
+    判据是 `diff > tol`，而 `NaN > tol` 恒为 False，于是缺行此前被"自洽"放行。
+    后果不只是漏检：体检层算复权收益时**前值填充**，缺失行算出 0% 收益，
+    再被读成"复权后正常（复权价连续）"→ 假 all-clear。
+    """
+    px = make_prices()
+    px.loc[(DATES[2], '600000'), 'adj_close'] = np.nan
+    with pytest.raises(ContractError) as e:
+        acna.PricePanel(px)
+    assert e.value.rule == 'adjust_incomplete'
+    assert 'adj_close' in str(e.value)
+
+
+def test_reject_factor_missing_where_raw_exists():
+    """同一个洞的另一半：`adj_factor` 缺行时 `expect` 也是 NaN，照样放行过。"""
+    px = make_prices()
+    px.loc[(DATES[2], '600000'), 'adj_factor'] = np.nan
+    with pytest.raises(ContractError) as e:
+        acna.PricePanel(px)
+    assert e.value.rule == 'adjust_incomplete'
+    assert 'adj_factor' in str(e.value)
+
+
+def test_suspension_missing_on_both_sides_is_allowed():
+    """反向：停牌日 raw 与 adj **两边都缺** —— 规格里的正常表示，不许拦。"""
+    px = make_prices()
+    row = (DATES[2], '600000')
+    for c in ('raw_open', 'raw_high', 'raw_low', 'raw_close',
+              'adj_open', 'adj_high', 'adj_low', 'adj_close'):
+        px.loc[row, c] = np.nan
+    acna.PricePanel(px)                      # 不抛异常即通过

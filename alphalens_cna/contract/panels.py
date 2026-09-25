@@ -229,6 +229,31 @@ class PricePanel(_Panel):
                          ('raw_low', 'adj_low'), ('raw_close', 'adj_close')):
             if raw not in df.columns or adj not in df.columns:
                 continue
+            # ★ 缺失也要查 —— 这是本检查此前的**洞**：
+            #   判据是 `diff > tol`，而 `NaN > tol` 恒为 False，
+            #   于是 adj 或 adj_factor 缺行会被"自洽"放行。后果不只是漏检：
+            #   体检层算复权收益时**前值填充**，缺失行算出 0% 收益 →
+            #   被读成"复权后正常（复权价连续）"，直接给出假 all-clear。
+            #   口径按规格：缺失一律 NaN；停牌日 raw 与 adj **两边都缺**，
+            #   所以只查"raw 在、adj 或 factor 不在"的行 —— 停牌不受影响。
+            raw_ok = df[raw].notna()
+            miss_adj = raw_ok & df[adj].isna()
+            miss_fac = raw_ok & df['adj_factor'].isna()
+            if miss_adj.any() or miss_fac.any():
+                n_adj, n_fac = int(miss_adj.sum()), int(miss_fac.sum())
+                which = miss_adj if miss_adj.any() else miss_fac
+                i = df.index[which][0]
+                fail(self.contract, 'adjust_incomplete',
+                     f'有原始价却缺复权价：`{adj}` 缺 {n_adj} 行、'
+                     f'`adj_factor` 缺 {n_fac} 行（这些行的 `{raw}` 有值）。\n'
+                     f'  例：{i[0]:%Y-%m-%d} {i[1]}  '
+                     f'{raw}={df.loc[i, raw]:.6f}，'
+                     f'adj_factor={df.loc[i, "adj_factor"]}，'
+                     f'{adj}={df.loc[i, adj]}\n'
+                     f'  含义：复权价本该由 `{raw} × adj_factor` 算得出来，'
+                     f'缺了就无法对账；体检层还会把它读成"复权后正常"。\n'
+                     f'  修法：补齐该行复权价/因子。**停牌**要把 raw 也置 NaN'
+                     f'（两边同时缺才算停牌）。')
             expect = df[raw] * df['adj_factor']
             diff = (df[adj] - expect).abs()
             scale = expect.abs().clip(lower=1e-12)
