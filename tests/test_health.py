@@ -566,3 +566,14 @@ def test_health_check_bad_factor_column_says_what_to_rename():
         acna.health_check(factor=bad)
     assert e.value.rule == 'factor_column'
     assert 'value' in str(e.value) and 'roe' in str(e.value)
+
+
+def test_health_check_factor_series_says_it_needs_a_frame():
+    """★ 传 Series 时要说清"需要 DataFrame"，不能报"实际列：[]"（Series 没有列）。"""
+    dates = pd.bdate_range('2024-01-02', periods=3)
+    idx = pd.MultiIndex.from_product([dates, ['600000']], names=['date', 'asset'])
+    with pytest.raises(acna.ContractError) as e:
+        acna.health_check(factor=pd.Series([1.0, 2.0, 3.0], index=idx))
+    assert e.value.rule == 'factor_panel'
+    assert 'DataFrame' in str(e.value) and 'Series' in str(e.value)
+    assert '实际列：[]' not in str(e.value)

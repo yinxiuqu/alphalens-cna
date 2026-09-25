@@ -160,7 +160,13 @@ def check_factor_panel(factor, th):
     # ★ 缺列要说人话。此前是裸 `factor['value']` → KeyError: 'value'，
     #   看不出该改什么（health_check 是诊断工具，故意不走契约全量校验，
     #   但**结构约定**仍要明确报出来）。
-    if 'value' not in getattr(factor, 'columns', []):
+    if not isinstance(factor, pd.DataFrame):
+        # ★ 传 Series 时说"实际列：[]"是错的（Series 没有列这回事）——
+        #   报错必须说准，否则读者会去数一个不存在的列清单。
+        fail('health', 'factor_panel',
+             f'`factor` 需要 DataFrame（MultiIndex(date, asset) + `value` 列），'
+             f'收到 {type(factor).__name__}。')
+    if 'value' not in factor.columns:
         fail('health', 'factor_column',
              f"因子面板缺少 `value` 列，实际列：{list(getattr(factor, 'columns', []))}。\n"
              f"  约定：因子列名固定为 `value`（`FactorPanel` 要求 `value` + `available_at`）。\n"
