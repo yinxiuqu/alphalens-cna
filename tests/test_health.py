@@ -137,11 +137,17 @@ def test_ohlc_clean_is_pass():
     assert find(acna.health_check(prices=mk_prices()), 'OHLC 结构').severity == 'pass'
 
 
-def test_extreme_move_explained_by_adjustment_is_fail():
-    """★ 原始价腰斩但复权后不动 → 断定 `adj_factor` 没盖住除权日。
+def test_extreme_move_explained_by_adjustment_is_pass():
+    """★ 原始价腰斩但复权后不动 → **复权是对的**，必须判 pass。
 
     构造：某票从第 30 天起 2.5:1 拆股，原始价 10 → 4，同时因子 1 → 2.5。
     复权价全程 10（收益 0），原始收益 −60%（> 50% 阈值）。
+
+    ⚠️ 2026-09-25 修正：这条测试此前断言 `fail`（"adj_factor 没盖住除权日"），
+    方向正好反了 —— `adj = raw × factor`，因子从 1 涨到 2.5 恰好把腰斩抹平，
+    这正是**正确处理**除权日的签名。
+    真实数据佐证：2016-2022 的 400 只样本报出 38 条，其中 31 条经 `stock_xdxr`
+    核对全部是 `category==1` 的正常除权除息日（高送转 10送10/12/15）。
     """
     df = mk_prices()
     d = df.index.get_level_values('date')
@@ -155,9 +161,32 @@ def test_extreme_move_explained_by_adjustment_is_fail():
     df['prev_close'] = df.groupby(level='asset')['raw_close'].shift(1).fillna(10.0)
 
     f = find(acna.health_check(prices=df), '极端涨跌')
-    assert f.severity == 'fail', f.summary
+    assert f.severity == 'pass', f.summary
     assert f.metric == 1.0, '除权日只有 1 条'
-    assert 'adj_factor' in f.summary
+    assert '已覆盖' in f.summary
+
+
+def test_extreme_move_not_covered_by_adjustment_is_warn():
+    """原始价腰斩且**复权后也腰斩** → 因子没跟上（或真实跳变），必须判 warn。
+
+    构造：原始价 10 → 4，且 `adj_factor` **保持 1.0 不变**（等于除权日没更新因子）。
+    此时 adj 与 raw 同步下跌，复权价并没有把跳变抹平 —— 这才是该报警的情形。
+    """
+    df = mk_prices()
+    d = df.index.get_level_values('date')
+    a = df.index.get_level_values('asset')
+    hit = (a == '000000') & (d >= DATES[30])
+    for c in ('raw_open', 'raw_high', 'raw_low', 'raw_close'):
+        df.loc[hit, c] = 4.0
+    # adj_factor 故意不动（默认就是 1.0）→ adj 同步腰斩
+    for c in ('open', 'high', 'low', 'close'):
+        df[f'adj_{c}'] = df[f'raw_{c}'] * df['adj_factor']
+    df['prev_close'] = df.groupby(level='asset')['raw_close'].shift(1).fillna(10.0)
+
+    f = find(acna.health_check(prices=df), '极端涨跌')
+    assert f.severity == 'warn', f.summary
+    assert f.metric == 1.0, '未被覆盖的只有 1 条'
+    assert '没盖住' in f.summary or 'adj_factor' in f.summary
 
 
 def test_adjust_factor_regression_is_fail():
@@ -362,6 +391,12 @@ def test_extreme_move_ignores_suspension_days():
 
     停牌 → 复牌暴涨这个真实跳变**要**被抓到；
     停牌**期间**那些假 0 收益不该出现在统计里。
+
+    ⚠️ 2026-09-25 修正：原夹具改完 ``raw_*`` 后**没有同步 ``adj_*``**，
+    于是复权价没跟着跳，判读上变成"复权后正常"（= 除权已被覆盖）。
+    真实面板必须满足 ``adj_* == raw_* × adj_factor``（契约层硬校验），
+    这里补齐同步，让场景回到本意：**复权后也涨** → 属于
+    "adj_factor 没盖住 / 停牌复牌这类真实跳变" → warn。
     """
     df = mk_prices()
     d = df.index.get_level_values('date')
@@ -371,7 +406,89 @@ def test_extreme_move_ignores_suspension_days():
     df.loc[gap, ['raw_open', 'raw_high', 'raw_low', 'raw_close']] = np.nan
     df.loc[(a == '000000') & (d == DATES[13]),
            ['raw_open', 'raw_high', 'raw_low', 'raw_close']] = 20.0
+    # 同步复权价，保持 adj_* == raw_* × adj_factor（契约要求）
+    for c in ('open', 'high', 'low', 'close'):
+        df[f'adj_{c}'] = df[f'raw_{c}'] * df['adj_factor']
     f = find(acna.health_check(prices=df), '极端涨跌')
-    # 复牌 +100% 必须被抓到
-    assert f.severity in ('warn', 'fail')
+    # 复牌 +100% 必须被抓到（复权后同样是大跳变）
+    assert f.severity == 'warn', f.summary
     assert f.metric >= 1
+
+
+# ── 2026-09-25 审计：极端涨跌的三档归因 ──────────────────────────────
+def _mk_extreme(n_evt, n_good, n_missing_adj=0, no_adj_col=False):
+    """造 n_evt 条 |原始收益|>50%，其中 n_good 条被复权抹平、n_missing_adj 条复权价缺失。
+
+    每只票在自己的第 3 天腰斩（10 → 4，−60%）；被抹平的票同日把因子抬到 2.5。
+    """
+    dates = pd.bdate_range('2020-01-02', periods=n_evt * 2 + 2)
+    codes = [f'{i:06d}.SZ' for i in range(n_evt)]
+    idx = pd.MultiIndex.from_product([dates, codes], names=['date', 'asset'])
+    px = pd.DataFrame({'raw_close': 10.0}, index=idx)
+    px['adj_factor'] = 1.0
+    dd = px.index.get_level_values('date')
+    aa = px.index.get_level_values('asset')
+    for k in range(n_evt):
+        hit = (aa == codes[k]) & (dd >= dates[2 * k + 1])
+        px.loc[hit, 'raw_close'] = 4.0
+        if k < n_good:
+            px.loc[hit, 'adj_factor'] = 2.5
+    px['adj_close'] = px['raw_close'] * px['adj_factor']
+    for k in range(n_good, n_good + n_missing_adj):
+        hit = (aa == codes[k]) & (dd >= dates[2 * k + 1])
+        px.loc[hit, 'adj_close'] = np.nan
+    if no_adj_col:
+        px = px.drop(columns=['adj_close'])
+    return px
+
+
+def test_extreme_move_pass_still_reports_unexplained_remainder():
+    """★ pass 也要交代没被覆盖的那部分 —— 不然汇总行等于把它们藏起来。
+
+    31/38 是测试者在 2016-2022 上实测到的比例；剩下 7 条需要人看，
+    以前这一支输出 pass 且**一个字都不提**它们。
+    """
+    f = find(acna.health_check(prices=_mk_extreme(38, 31)), '极端涨跌')
+    assert f.severity == 'pass', f.summary
+    assert '另有 7 条复权后仍大' in f.summary, f.summary
+    # 明细要能自己说清哪几条是"没被覆盖"的
+    assert '问题' in f.detail.columns
+    assert dict(f.detail['问题'].value_counts()) == {'已覆盖（因子已跟上）': 31, '复权后仍大': 7}
+
+
+def test_extreme_move_missing_adj_is_not_pass():
+    """★ 复权价缺失 ≠ 复权后正常。
+
+    `ar` 是**前值填充**后算的，缺失行算出 0% 收益 —— 看着"正常"，
+    其实"没有复权价可判断"。此前它被并进 explained，占比一过 80% 就报
+    pass＋"复权价连续"，是假 all-clear。现在缺失不为 0 就不给 pass。
+    """
+    f = find(acna.health_check(prices=_mk_extreme(3, 0, no_adj_col=True)), '极端涨跌')
+    assert f.severity == 'warn', f.summary
+    assert '复权价缺失' in f.summary
+    assert '正常' not in f.summary.split('：')[1] or '缺失' in f.summary
+    assert f.metric == 3.0
+    assert set(f.detail['问题']) == {'复权价缺失'}
+
+    # 大多数被抹平、少数缺失 —— 依然是 warn（"没检验"与"检验通过"必须分开）
+    f2 = find(acna.health_check(prices=_mk_extreme(38, 31, n_missing_adj=7)), '极端涨跌')
+    assert f2.severity == 'warn', f2.summary
+    assert '7 条复权价缺失' in f2.summary
+
+
+def test_extreme_move_metric_is_total_flagged():
+    """★ metric 与文案首数必须是同一个量（此前 warn 支报的是未覆盖数，报告里
+    渲染成「13 条 … [11]」）。pass 支与 warn 支口径也要一致。"""
+    f = find(acna.health_check(prices=_mk_extreme(13, 2)), '极端涨跌')   # 2 抹平 + 11 仍大
+    assert f.severity == 'warn'
+    assert f.metric == 13.0, f'应报总触发数 13，实际 {f.metric}'
+    assert f.summary.startswith('13 条')
+    g = find(acna.health_check(prices=_mk_extreme(38, 31)), '极端涨跌')  # pass 支
+    assert g.metric == 38.0 and g.summary.startswith('38 条')
+
+
+def test_extreme_move_warn_text_omits_zero_buckets():
+    """某一档为 0 时不该还念它（"0 条复权后仍然很大"只会让人分心）。"""
+    f = find(acna.health_check(prices=_mk_extreme(3, 0, no_adj_col=True)), '极端涨跌')
+    assert '0 条复权后' not in f.summary, f.summary
+    assert '0 条已被复权抹平' not in f.summary, f.summary
