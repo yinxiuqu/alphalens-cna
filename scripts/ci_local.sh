@@ -37,6 +37,7 @@ for arg in "$@"; do
 done
 
 say() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
+warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
 
 # 解释器版本：项目要求 >= 3.9。系统里的 `python3` 可能是 3.8（实测踩过），
 # 那时 pip 会抛一句很难懂的 "requires a different Python" —— 这里提前拦下。
@@ -46,6 +47,30 @@ if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) 
     echo "   换一个：PYTHON=python3.11 scripts/ci_local.sh" >&2
     exit 3
 fi
+
+# ── 过期构建残留提醒 ──────────────────────────────────────────────────────
+# `python -m build` / `pip wheel` 会在仓库根留下 `alphalens_cna.egg-info/` 与
+# `build/`。它们**不影响安装**，但躺在 cwd 上会被 `importlib.metadata` 当成本包的
+# 元数据 —— 版本号一改，从仓库根 import 就会报**旧版本**
+# （实测：pyproject 已 0.2.0，`python -c "import alphalens_cna; print(__version__)"`
+#  仍报 0.1.6，因为读的是那份残留）。
+# 所以这里只**提示**、不自动删（删目录这种事该由人拍板）。
+# >>> stale-artifact-hint
+STALE_HINT=""
+for d in alphalens_cna.egg-info build; do
+    [ -e "$d" ] && STALE_HINT="${STALE_HINT:+$STALE_HINT }$d"
+done
+if [ -n "$STALE_HINT" ]; then
+    warn "⚠️  发现过期构建残留：$STALE_HINT"
+    _py=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+    _egg=$(sed -n 's/^Version: //p' alphalens_cna.egg-info/PKG-INFO 2>/dev/null | head -1)
+    if [ -n "$_egg" ] && [ -n "$_py" ] && [ "$_egg" != "$_py" ]; then
+        warn "    它自报 $_egg，而 pyproject 是 $_py —— 从仓库根 import 时 __version__ 会报旧值"
+    fi
+    warn "    清理（不影响任何安装）：rm -rf $STALE_HINT"
+    warn "    （提示而已，不会自动删 —— 但不清掉的话，下面测试里读到的版本号是旧的）"
+fi
+# <<< stale-artifact-hint
 
 # ── venv 准备 ────────────────────────────────────────────────────────────
 # extra 参数 → venv 目录名。测试 job 用 [dev]，对拍 job 用 [dev,compat]。
@@ -115,3 +140,6 @@ else
 fi
 
 say "全部通过 ✅  （CI 等价：$(basename "$VENV_ROOT")）"
+if [ -n "$STALE_HINT" ]; then
+    warn "提醒：仓库根仍有构建残留 $STALE_HINT —— 建议 rm -rf $STALE_HINT（否则 __version__ 会报旧值）"
+fi
