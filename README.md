@@ -41,7 +41,7 @@ pip install "git+https://github.com/yinxiuqu/alphalens-cna.git"
 | 2 | 数据体检 | `health.check()` | 10 项体检，超阈值告警 + 明细 |
 | 3 | 不变量对账 | `CleanResult.ledger` | 输入 = 输出 + 各类剔除，**对不上就抛异常** |
 | 4 | **等价性回归** | `compat.check_parity()` | 退化配置下与 alphalens **逐位相同（0.000e+00）** |
-| 5 | 已知答案测试 | `tests/`（301 个） | 每处逻辑都有能手算的数据集 |
+| 5 | 已知答案测试 | `tests/`（457 个） | 每处逻辑都有能手算的数据集 |
 | 6 | 稳健性报告 | `inference/{robustness,rank_entropy}` | 扰动分布 + 排名熵，**不给单一数字** |
 
 ## 长什么样
@@ -146,6 +146,8 @@ led.check_n_trials(claimed=3, goal='roe')                   # 抓"低报校正�
 ## 状态
 
 M0 / M1 完成，M2 进行中。
+**当前版本 0.2.0** —— 每版装了什么、还剩什么没做、怎么自查，见
+[docs/版本进展.md](docs/版本进展.md)。
 
 | 层 | 模块 |
 |---|---|
