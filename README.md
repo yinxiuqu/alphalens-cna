@@ -182,6 +182,14 @@ scripts/ci_local.sh --quick  # 跳过对拍 job（不装 alphalens-reloaded）
 开头会打印解释器/pandas/numpy 版本与"有没有 pyarrow"，让环境差异一眼可见。
 解释器低于 3.9 时会提前拦下并提示（系统里的 `python3` 可能就是 3.8）。
 
+## 关注
+
+公众号「**观复量化分析**」—— 这个项目的踩坑记录、口径辨析与实现细节会先发在那里。
+
+![公众号：观复量化分析](https://raw.githubusercontent.com/yinxiuqu/alphalens-cna/main/docs/images/wechat-official-qr.jpg)
+
+**欢迎关注。** 用着有问题、或者想聊聊某个口径该怎么定，也可以在 GitHub 直接提 Issue。
+
 ## 许可证
 
 Apache License 2.0 —— 见 [LICENSE](LICENSE)。
