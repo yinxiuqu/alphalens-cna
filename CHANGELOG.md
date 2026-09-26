@@ -5,6 +5,20 @@
 
 ## [Unreleased]
 
+### 待办
+- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
+- 退市收益约定的行业维度复核
+
+## [0.2.0] - 2026-09-25
+
+### 破坏性变更
+- **契约补上缺失校验**：`raw_*` 有值的行上，`adj_*` 或 `adj_factor` 缺行现在会被
+  `PricePanel` 拒绝（`adjust_incomplete`）。
+  此前自洽校验的判据是 `diff > tol`，而 `NaN > tol` 恒为 False —— 缺行被"自洽"放行，
+  一路穿到体检层就成了上面那条「复权价连续」的假 all-clear。
+  停牌（raw 与 adj **两边都缺**）不受影响，仍按输入规格允许。
+  ⚠️ 会拒绝以前能跑的面板，属破坏性变更：按约定进 0.2.0，不走 0.1.x patch。
+
 ### 新增
 - **`ReturnModel.exit_policy` —— 出场侧可成交性**（默认 `'assume'`，**向后兼容**）。
   此前 `can_sell_open` 只出现在体检报告里，收益计算**完全不用它**：出场日一字跌停
@@ -75,18 +89,6 @@
   （其中一句还谎称"只给 raw_* 让库自算"，实测会被 `missing_columns` 拒绝）、
   `analysis/event.py` 的 `idx_ret`、`compat` 的 `common`，以及
   `inference/__init__.py` 的重复导入。
-
-### 破坏性变更（留给 0.2.0，不要放进 0.1.x 的 patch）
-- **契约补上缺失校验**：`raw_*` 有值的行上，`adj_*` 或 `adj_factor` 缺行现在会被
-  `PricePanel` 拒绝（`adjust_incomplete`）。
-  此前自洽校验的判据是 `diff > tol`，而 `NaN > tol` 恒为 False —— 缺行被"自洽"放行，
-  一路穿到体检层就成了上面那条「复权价连续」的假 all-clear。
-  停牌（raw 与 adj **两边都缺**）不受影响，仍按输入规格允许。
-  ⚠️ 会拒绝以前能跑的面板，属破坏性变更：按约定进 0.2.0，不走 0.1.x patch。
-
-### 待办
-- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
-- 退市收益约定的行业维度复核
 
 ## [0.1.7] - 2026-09-25
 
