@@ -129,6 +129,32 @@ def _as_factor(obj, assume_available_at, notice):
     return _wrap_for_check('factor', obj)
 
 
+def _group_frame(obj, notice=None):
+    """``groupby`` / ``grouping`` 这类**控制帧**的包装。
+
+    单列（或名为 ``group`` 的那一列）→ 按 :class:`Grouping` 校验；
+    **多列且没有 ``group``** → 按 :class:`Exposures` 校验（只查形状与有限性）。
+
+    为什么不能一律按 `Grouping` 拒掉：多列控制帧在 `build_report` 里是**被容忍**的
+    （0.3.0 就能跑；实测它的作用仅限于"有 NaN 分组值就剔行"，
+    列并不会进 `CleanResult.data`），而真正需要**单列**分组的是 `neutralize` ——
+    它只有在真的被调用时才需要，那时它会自己报 `preprocess/ambiguous_group`。
+    实测过：0.4.0 一律拒掉会让"多列 groupby（不中性化）"这种用法**回归**。
+    """
+    if obj is None or not isinstance(obj, pd.DataFrame):
+        return _wrap_for_check('grouping', obj)
+    if len(obj.columns) == 1 or 'group' in obj.columns:
+        return Grouping(obj)
+    if not len(obj.columns):
+        fail('Grouping', 'empty',
+             '分组/控制帧是空的（0 列）。修法：补上分组列，或干脆不传 `groupby`。')
+    if notice is not None:
+        notice.append(f'`groupby` 有 {len(obj.columns)} 列且没有 `group` 列 —— '
+                      '按**控制帧**校验（形状 + 有限性）；'
+                      '要中性化就必须给**单列**分组（`neutralize` 会报错）')
+    return Exposures(obj)
+
+
 def _wrap_for_check(name, obj, validate=True, **kw):
     """包装成契约对象。已经是**校验过**的契约对象则原样返回。"""
     if obj is None:
@@ -204,7 +230,7 @@ def ensure_contract(factor, prices, calendar, *, universe=None, tradability=None
     pp = _wrap_for_check('prices', prices)
     up = _wrap_for_check('universe', universe)
     tp = _wrap_for_check('tradability', tradability)
-    gp = _wrap_for_check('grouping', grouping)
+    gp = _group_frame(grouping, notices)
     ep = _wrap_for_check('exposures', exposures)
     vt = _wrap_for_check('events', events)
     for nm, obj in (('FactorPanel', fp), ('PricePanel', pp), ('Universe', up),

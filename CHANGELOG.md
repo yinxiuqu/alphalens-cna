@@ -9,6 +9,26 @@
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
 
+## [0.4.1] - 2026-09-28
+
+### 修复
+发布后自检（专门找测试覆盖不到的地方）发现三处，其中两处是 0.4.0 引入的：
+
+- **`is_oos` 的默认 `embargo` 少一天**（`max(horizons)` → `max(horizons) + 1`）。
+  `entry='next_open'` 下样本 t 的前向收益覆盖 `[t+1, t+1+h]`，所以 `t+1+h` 要
+  **严格早于**切分日。实测 960 行面板上：`embargo = max(horizons)` 时样本内**最后一个**
+  样本的 h=21 出场日**正好落在切分日**上 —— 读到样本外价格，而这个功能的全部意义
+  就是不让它读到。回归测试按日历验算（不是断言魔数），切片算法一变就会失败。
+- **多列 `groupby` 被误拒（回归）**：0.4.0 把 `groupby` 一律按 `Grouping` 校验，
+  而 `Grouping` 要求"恰好一列"→ 0.3.0 能跑的"多列控制帧（不中性化）"被拒了。
+  现改为：单列（或名为 `group`）按 `Grouping` 校验；**多列按控制帧**校验
+  （形状 + 有限性）并**留痕**；真要中性化时 `neutralize` 会自己报
+  `preprocess/ambiguous_group`（可执行报错）。
+  （顺带更正一条我写错的注释：多列控制帧的作用是"分组值缺失就剔行"，
+  那些列**不会**进 `CleanResult.data` —— 0.3.0 也一样。）
+- **`Grouping(df, validate=False)` + 空表时 `group_col` 漏裸 `IndexError`** ——
+  现在报 `Grouping/empty`（`group_col` 是 0.4.0 新加的属性，这是它的边界）。
+
 ## [0.4.0] - 2026-09-28
 
 ### 破坏性变更

@@ -364,7 +364,14 @@ class Grouping(_Panel):
     @property
     def group_col(self):
         """分组标签所在的列名（有 `group` 用它，否则就是唯一那一列）。"""
-        return 'group' if 'group' in self._df.columns else self._df.columns[0]
+        if 'group' in self._df.columns:
+            return 'group'
+        if not len(self._df.columns):
+            # 只在 `Grouping(df, validate=False)` + 空表时走得到 —— 别漏裸 IndexError。
+            fail(self.contract, 'empty',
+                 'Grouping 没有列，取不到分组标签列名。（空表请用 '
+                 '`Exposures` 传控制变量，或补上分组列。）')
+        return self._df.columns[0]
 
     def _check_columns(self):
         super()._check_columns()

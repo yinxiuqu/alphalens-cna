@@ -178,3 +178,34 @@ def test_nonpositive_equity_does_not_emit_runtime_warning():
     assert np.isnan(s['annual_return']), '净值非正 → 年化无定义，应为 NaN'
     assert np.isnan(s['sharpe'])
     assert s['total_return'] < 0
+
+
+def test_default_embargo_actually_purges_the_cut_boundary():
+    """★ 自检发现的 off-by-one：默认 embargo 少一天时，样本内**最后一个**样本的
+    前向收益出场日正好落在切分日上 —— 那就是把样本外的价格读进了样本内。
+
+    这条测试直接按日历验算，而不是断言一个魔数：只要默认口径或 `split_is_oos`
+    的切片算法变了，它就会失败。
+    """
+    dates, px, f = mk()
+    horizons = (1, 5, 21)
+    rep = build(dates, px, f, horizons=horizons, is_oos=0.7)
+    info = rep.is_oos['info']
+    cut = pd.Timestamp(info['cut'])
+    assert info['embargo'] == max(horizons) + 1, '默认 embargo = 最大持有期 + 1'
+
+    cal = pd.DatetimeIndex(acna.Calendar(dates).index)
+    # 样本内最后一个样本、最长持有期：入场在 t+1，出场在 t+1+h
+    is_end = cal[cal < cut][-info['embargo'] - 1]          # split_is_oos 的切片口径
+    exit_date = cal[cal.get_indexer([is_end])[0] + 1 + max(horizons)]
+    assert exit_date < cut, (
+        f'样本内末样本 {is_end:%Y-%m-%d} 的前向收益出场在 {exit_date:%Y-%m-%d}，'
+        f'不早于切分日 {cut:%Y-%m-%d} —— 泄漏')
+
+
+def test_embargo_zero_is_allowed_but_says_nothing_was_purged():
+    """显式给 0 是允许的（研究决策），但那意味着没挖 —— 报告仍要写出来。"""
+    dates, px, f = mk()
+    rep = build(dates, px, f, horizons=(1, 5), is_oos=0.7, embargo=0)
+    assert rep.is_oos['info']['embargo'] == 0
+    assert 'embargo=0' in rep.to_markdown()

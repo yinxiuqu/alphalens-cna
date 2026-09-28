@@ -128,10 +128,6 @@ def test_exposures_with_inf_is_refused_at_the_entry():
     (pd.DataFrame(index=pd.MultiIndex.from_product(
         [pd.bdate_range('2023-01-02', periods=2), ['600000']],
         names=['date', 'asset'])), 'Grouping', 'empty'),
-    (pd.DataFrame({'a': ['x'], 'b': ['y']},
-                  index=pd.MultiIndex.from_tuples(
-                      [(pd.Timestamp('2023-01-02'), '600000')],
-                      names=['date', 'asset'])), 'Grouping', 'ambiguous_group'),
 ])
 def test_bad_groupby_is_refused_at_the_entry_not_downstream(
         groupby, contract, rule):
@@ -202,3 +198,38 @@ def test_build_report_has_no_events_parameter():
     assert 'events' not in params
     doc = inspect.getdoc(acna.build_report) or ''
     assert 'align_event_windows' in doc, '边界要写在文档里，不能只靠"没这个参数"'
+
+
+def test_multi_column_groupby_is_carried_through_not_rejected():
+    """★ 自检发现的**回归**：0.3.0 里"多列 groupby（不中性化）"能跑 ——
+    那些列只是被带进清洗结果供后续分析；0.4.0 一律按 `Grouping` 拒掉会打断这种用法。
+
+    修法：单列（或名为 `group`）按 `Grouping` 校验；多列按**控制帧**校验
+    （形状 + 有限性）并**留痕**；真需要单列分组的是 `neutralize`，它自己会报。
+    """
+    dates, idx, px, f, rng = mk()
+    grp2 = pd.DataFrame({'industry': rng.choice(['a', 'b'], len(idx)),
+                         'size_grp': rng.choice([1, 2], len(idx))}, index=idx)
+    rep = acna.build_report(f, px, acna.Calendar(dates), horizons=(1,), quantiles=3,
+                            groupby=grp2)
+    assert any('控制帧' in n for n in rep.contract['notices']), '必须留痕，别静默按别的契约校验'
+    # ⚠️ 别断言"这两列会进 CleanResult.data" —— 实测 0.3.0 也不进（多列控制帧的作用
+    #    仅限于"分组值缺失就剔行"）。这里钉住的是**行为不变**：分组值齐全时数字与
+    #    完全不传 groupby 一致。
+    base = acna.build_report(f, px, acna.Calendar(dates), horizons=(1,), quantiles=3)
+    pd.testing.assert_frame_equal(rep.frames()['ic'], base.frames()['ic'])
+
+    # 真要中性化时，报错来自 neutralize，且是可执行的契约错误
+    with pytest.raises(ContractError) as e:
+        acna.build_report(f, px, acna.Calendar(dates), horizons=(1,), quantiles=3,
+                          groupby=grp2, preprocess=('neutralize',))
+    assert e.value.rule == 'ambiguous_group'
+
+
+def test_grouping_group_col_on_empty_unvalidated_frame_is_a_contract_error():
+    """`Grouping(df, validate=False)` + 空表时，`group_col` 不能漏裸 IndexError。"""
+    dates, idx, px, f, rng = mk()
+    g = acna.Grouping(pd.DataFrame(index=idx[:5]), validate=False)
+    with pytest.raises(ContractError) as e:
+        g.group_col
+    assert (e.value.contract, e.value.rule) == ('Grouping', 'empty')

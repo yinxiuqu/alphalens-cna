@@ -602,7 +602,9 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         ⚠️ 切分**只按时间顺序**（时序数据随机切等于没切），并在切分点前挖掉
         ``embargo`` 期 —— 那些样本的前向收益跨过切分点，留着就是泄漏。
     embargo : int, 可选
-        purge 的期数，默认 ``max(horizons)``（最大持有期）。
+        purge 的期数，默认 ``max(horizons) + 1``（最大持有期**再加一天**：
+        `entry='next_open'` 下样本 t 的前向收益覆盖 ``[t+1, t+1+h]``，
+        要让它**严格早于**切分日，装不下那一天就会读到样本外的价格）。
     validate : bool
         默认 ``True``：**先过防线 1 再算任何数字**（面板契约 + 跨表一致性）。
         传裸 ``DataFrame`` 会自动包成 ``FactorPanel`` / ``PricePanel``；因子缺
@@ -739,7 +741,11 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
         _dates = pd.DatetimeIndex(
             sorted(set(cr.data.index.get_level_values('date'))))
-        _emb = int(embargo if embargo is not None else max(horizons))
+        # ⚠️ 默认 embargo 必须比最大持有期**多一天**：样本在 t 日、`entry='next_open'`
+        #    时前向收益覆盖 [t+1, t+1+h]，所以 t+1+h 要**严格早于**切分日。
+        #    实测：embargo = max(horizons) 时，样本内最后一个样本的 h=21 出场日
+        #    正好落在切分日上（读到样本外价格）；+1 就不泄漏。
+        _emb = int(embargo if embargo is not None else max(horizons) + 1)
         _ratio = None
         if isinstance(is_oos, (int, float)) and not isinstance(is_oos, bool):
             _ratio = float(is_oos)
