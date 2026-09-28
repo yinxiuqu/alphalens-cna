@@ -101,7 +101,13 @@ def portfolio_summary(returns, periods_per_year=None):
     dd = eq / eq.cummax() - 1
     ann = np.nan
     if periods_per_year:
-        ann = float(eq.iloc[-1] ** (periods_per_year / len(r)) - 1)
+        # ⚠️ 净值非正时**不能**开分数次方：`(-0.3) ** 0.4` 落到复数域，
+        #    numpy 会给 NaN + RuntimeWarning。这里直接判成"无法年化"。
+        #    （这条路径 0.4.0 起会被 `build_report` 默认走到 —— 报告里的组合绩效节，
+        #      所以不能留一个会往 stdout 喷警告的静默 NaN。）
+        _last = float(eq.iloc[-1])
+        ann = (float(_last ** (periods_per_year / len(r)) - 1) if _last > 0
+               else np.nan)
     vol = float(r.std(ddof=1) * np.sqrt(periods_per_year)) if periods_per_year else np.nan
     sharpe = (ann / vol) if (periods_per_year and vol and vol > 0) else np.nan
     return pd.Series({

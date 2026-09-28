@@ -7,9 +7,20 @@
 
 from __future__ import annotations
 import os, sys
+import re
+
 import numpy as np, pandas as pd, pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import alphalens_cna as acna  # noqa: E402
+
+
+def _sec(md, title):
+    """按**标题**取一节 —— 节次编号是自动生成的，别把它写进测试。"""
+    m = re.search(rf'^## [^、]+、{re.escape(title)}$(.*?)(?=^## |\Z)', md,
+                  re.M | re.S)
+    assert m, f'报告里找不到「{title}」这一节'
+    return m.group(1)
+
 
 
 # ── ① __all__ 完整性（自省式防线）────────────────────────────────
@@ -146,14 +157,14 @@ def test_report_renders_dash_not_no_when_uncomputable():
     rep = acna.Report(factor_name='x', stability_detail={
         21: {'stability': nan, 'chunk_means': [], 'slope': nan,
              't_slope': nan, 'decaying': None, 'half_life': nan}})
-    blk = rep.to_markdown().split('## 七、因子衰减与稳定性')[1].split('## ')[0]
+    blk = _sec(rep.to_markdown(), '因子衰减与稳定性')
     assert '—' in blk, blk
     assert '| 否 |' not in blk and '| 是 |' not in blk, f'不该报"是/否"：{blk}'
     # 反向：能算出来时必须给是/否，而不是永远破折号
     rep2 = acna.Report(factor_name='x', stability_detail={
         21: {'stability': 1.0, 'chunk_means': [0.1, 0.1], 'slope': -1e-4,
              't_slope': -3.0, 'decaying': True, 'half_life': 100.0}})
-    blk2 = rep2.to_markdown().split('## 七、因子衰减与稳定性')[1].split('## ')[0]
+    blk2 = _sec(rep2.to_markdown(), '因子衰减与稳定性')
     assert '| 是 |' in blk2 and '100%' in blk2, blk2
 
 
@@ -196,7 +207,7 @@ def test_report_tables_have_no_spurious_index_column():
                       'available_at': idx.get_level_values('date')}, index=idx)
     md = acna.build_report(f, px, acna.Calendar(dates), horizons=(21,),
                            quantiles=5, n_trials=3, name='t').to_markdown()
-    for sec in ('## 七、因子衰减与稳定性', '## 八、尾部风险'):
-        blk = md.split(sec)[1].split('## ')[0]
+    for sec in ('因子衰减与稳定性', '尾部风险'):
+        blk = _sec(md, sec)
         headers = [l for l in blk.split('\n') if l.startswith('| ')][0]
         assert '| index |' not in headers, f'{sec} 表头多了 index 列: {headers}'

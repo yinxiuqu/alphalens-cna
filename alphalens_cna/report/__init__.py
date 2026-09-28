@@ -21,6 +21,15 @@ from ..contract.errors import fail
 __all__ = ['Report', 'build_report']
 
 
+_CN = ('零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+       '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八')
+
+
+def _sec_no(i):
+    """1 → ``一``；12 → ``十二``（超出表就退回阿拉伯数字）。"""
+    return _CN[i] if 0 < i < len(_CN) else str(i)
+
+
 def _contract_line(c):
     """把防线 1 的收据渲染成一行（首屏可见）。"""
     if not c.get('enabled'):
@@ -95,6 +104,12 @@ class Report:
         # DSR **没能计算**时的原因。空串 = 算出来了。
         # 不许静默省略：报告里会显示"未计算 + 原因"。
     extra: dict = field(default_factory=dict)
+    portfolio: pd.DataFrame = None
+        # 组合绩效摘要（**统计口径，不是可交易净值**）：index=持有期，columns=指标
+        # （年化 / 波动 / 最大回撤 / 夏普 / 胜率…）。逐期多空收益的口径，等权、无资金约束。
+    is_oos: dict = field(default_factory=dict)
+        # 样本内 / 样本外对照：{'info': {...}, '样本内': DataFrame, '样本外': DataFrame}。
+        # 空 dict = 没做这个拆分（默认不做 —— 切分是研究决策，不该库替你定）。
     contract: dict = field(default_factory=dict)
         # **防线 1 的收据**：{'enabled','checked','cross','notices'}。
         # 空 dict = 没走统一校验（例如直接用低层引擎）。报告首屏会把它印出来 ——
@@ -123,6 +138,9 @@ class Report:
             'dsr': (self.dsr.to_frame() if self.dsr is not None else None),
             'tail': self.tail,
             'crash': self.crash,
+            'portfolio': self.portfolio,
+            'is_oos_is': (self.is_oos or {}).get('样本内'),
+            'is_oos_oos': (self.is_oos or {}).get('样本外'),
             'health': (pd.DataFrame([{'项目': f.name, '严重度': f.severity,
                                       '结论': f.summary, '指标': f.metric}
                                      for f in self.health.findings])
@@ -140,7 +158,17 @@ class Report:
 
     # -- Markdown ----------------------------------------------------------
     def to_markdown(self, title=None):
-        """渲染成 Markdown。"""
+        """渲染成 Markdown。
+
+        ⚠️ 节次编号是**自动**的（``一、二、三…``）：新增节时不必再手改所有编号，
+        也不会出现"加了新节、后面编号全错"的情况。条件渲染的节不占号。
+        """
+        _n = [0]
+
+        def H(name):
+            _n[0] += 1
+            return f'## {_sec_no(_n[0])}、{name}'
+
         L = []
         L.append(f'# {title or self.factor_name + " 因子分析报告"}')
         L.append('')
@@ -152,7 +180,7 @@ class Report:
             L.append('')
 
         if self.verdict is not None:
-            L.append('## 一、结论')
+            L.append(H('结论'))
             L.append('')
             L.append('```')
             L.append(str(self.verdict))
@@ -160,7 +188,7 @@ class Report:
             L.append('')
 
         if self.health is not None:
-            L.append('## 二、数据体检')
+            L.append(H('数据体检'))
             L.append('')
             L.append(f'已查 **{self.health.n_checked}** 项，'
                      f'硬错误 {len(self.health.fails)}，'
@@ -173,7 +201,7 @@ class Report:
             L.append('')
 
         if self.clean is not None and getattr(self.clean, 'ledger', None):
-            L.append('## 三、样本账')
+            L.append(H('样本账'))
             L.append('')
             L.append('> **每一步剔除都可归因。** 输入 = 输出 + 各类剔除之和。')
             L.append('')
@@ -192,8 +220,7 @@ class Report:
         ]):
             if df is None or not len(df):
                 continue
-            name = '四、IC' if sec == 0 else '五、Newey-West 修正'
-            L.append(f'## {name}')
+            L.append(H('IC' if sec == 0 else 'Newey-West 修正'))
             L.append('')
             L.append(_md_table(df))
             L.append('')
@@ -201,7 +228,7 @@ class Report:
             L.append('')
 
         if self.quantile_stats is not None and len(self.quantile_stats):
-            L.append('## 六、分层')
+            L.append(H('分层'))
             L.append('')
             L.append(_md_table(self.quantile_stats))
             L.append('')
@@ -209,8 +236,28 @@ class Report:
                      '接近 ±1 才算"单调"；两端清晰、中间乱序说明因子定义可能有问题。')
             L.append('')
 
+        if self.portfolio is not None and len(self.portfolio):
+            L.append(H('组合绩效（统计口径，非可交易净值）'))
+            L.append('')
+            L.append(_md_table(self.portfolio))
+            L.append('')
+            L.append('> ⚠️ **这是逐期多空收益的统计摘要**（等权、逐期独立），'
+                     '**不是可交易净值曲线** —— 它不含资金约束，也没有模拟'
+                     '"这天买不进 / 卖不出"的资金曲线。')
+            L.append('> `max_drawdown` / `sharpe` 按观测频率年化'
+                     '（相邻日期间隔中位数，月频调仓不会被当成日频）。')
+            L.append('> 本表**未扣成本**；扣成本后的整体口径见「结论」里的净收益。')
+            try:
+                _has_nan = bool(self.portfolio.isna().to_numpy().any())
+            except Exception:                                     # noqa: BLE001
+                _has_nan = False
+            if _has_nan:
+                L.append('> ⚠️ 表里有 NaN：常见原因是该持有期的**累计净值为非正**'
+                         '（年化与夏普无定义），或期数不足。')
+            L.append('')
+
         if self.stability_detail:
-            L.append('## 七、因子衰减与稳定性')
+            L.append(H('因子衰减与稳定性'))
             L.append('')
             L.append('> **这是"因子是不是在失效"的判据**，和 IC 高低是两件事。')
             L.append('> `稳定性` = 连续子段与全样本同号的比例；'
@@ -240,7 +287,7 @@ class Report:
             L.append('')
 
         if self.crash is not None and len(self.crash):
-            L.append('## 八、尾部风险')
+            L.append(H('尾部风险'))
             L.append('')
             L.append('> **均值与 IC 看不见的那一块。** 秩相关度量的是全样本成对单调性，'
                      '一团挤在"双低角"的样本彼此同序，会把 ρ 往正方向拉 —— '
@@ -272,13 +319,36 @@ class Report:
             L.append('')
 
         if self.turnover is not None and len(self.turnover):
-            L.append('## 九、换手与成本')
+            L.append(H('换手与成本'))
             L.append('')
             L.append(_md_table(self.turnover))
             L.append('')
 
+        if self.is_oos and self.is_oos.get('info'):
+            info = self.is_oos['info']
+            L.append(H('样本内 / 样本外对照'))
+            L.append('')
+            L.append(f"> 切分日 **{info['cut']:%Y-%m-%d}**"
+                     f"（样本内 {info['n_is']} 期 / 样本外 {info['n_oos']} 期，"
+                     f"embargo={info['embargo']} 期）。")
+            L.append('')
+            for seg in ('样本内', '样本外'):
+                tbl = self.is_oos.get(seg)
+                if tbl is None or not len(tbl):
+                    continue
+                L.append(f'**{seg}**')
+                L.append('')
+                L.append(_md_table(tbl, index=True))
+                L.append('')
+            L.append('> ⚠️ 样本外**期数少时不要过度解读**：IC / IR 本身就是估计量，'
+                     '十几期的"样本外有效"不构成证据。看 `期数` 那一行。')
+            L.append('> 切分是按**时间顺序**做的（时序数据随机切等于没切），'
+                     '并在切分点前挖掉了 `embargo` 期 —— 那些样本的前向收益跨过切分点，'
+                     '留着就是把样本外的价格泄漏进样本内。')
+            L.append('')
+
         if self.clean is not None and getattr(self.clean, 'ledger', None):
-            L.append('## 十、剔除明细')
+            L.append(H('剔除明细'))
             L.append('')
             # ⚠️ 这里不能无条件 .set_index('reason')。DropLedger 没有 __bool__，
             #    所以上面的 `getattr(...)` 守卫对"零剔除的台账"是**真值**，
@@ -485,12 +555,14 @@ def _fmt(v):
 
 # --------------------------------------------------------------------------- #
 def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
-                 universe=None, names=None, list_dates=None, limit_status=None,
+                 universe=None, tradability=None, names=None, list_dates=None,
+                 limit_status=None,
                  exposures=None, groupby=None, by=None, sort_method='conditional',
                  model=None, n_trials=None, method='bhy', cost_bps=15.0,
                  name='factor', new_stock_days=60, prepare_tradability=True,
                  health=True, crash_threshold=None, preprocess=None,
-                 warn_unnormalized=True, validate=True):
+                 warn_unnormalized=True, validate=True,
+                 is_oos=None, embargo=None):
     """**一条龙**：数据体检 → 可成交性 → 前向收益 → 清洗 → 分层 → IC → NW → Verdict。
 
     Parameters
@@ -503,8 +575,13 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     horizons : tuple[int]
     n_trials : int, 可选
         **一共测过多少个假设。** 不给就不做多重检验校正，并在结论里**明说**。
+    tradability : Tradability | DataFrame, optional
+        自带可成交性表（``can_buy_open`` / ``can_sell_open`` / ``suspended`` …）。
+        给了就**不再自动计算**，且 ``validate=True`` 时会先在边界按
+        ``Tradability`` 校验。不给则按 ``prepare_tradability`` 决定是否自动算。
     prepare_tradability : bool
         默认 ``True``，自动算可成交性。若 ``prices`` 已带 ``can_buy_open`` 则跳过。
+        （给了 ``tradability`` 时本参数无关。）
     health : bool
         默认 ``True``，跑一遍数据体检（防线 2）并把结论带进报告。
         **"数字对不对"之前先回答"数据能不能用"。**
@@ -517,6 +594,15 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
         ``'neutralize'`` 需要 ``exposures`` 或 ``groupby``，否则报错。
         例：``preprocess=('winsorize', 'standardize', 'neutralize')``
+    is_oos : float | str | Timestamp, 可选
+        要**样本内 / 样本外对照**时给：``0.7`` 表示按时间顺序前 70% 作样本内；
+        给日期（如 ``'2024-01-01'``）则直接以它为切分日（**切分日归样本外**，
+        事前冻结的样本外就该这么给）。不给就不做 —— 切分是研究决策，库不替你定。
+
+        ⚠️ 切分**只按时间顺序**（时序数据随机切等于没切），并在切分点前挖掉
+        ``embargo`` 期 —— 那些样本的前向收益跨过切分点，留着就是泄漏。
+    embargo : int, 可选
+        purge 的期数，默认 ``max(horizons)``（最大持有期）。
     validate : bool
         默认 ``True``：**先过防线 1 再算任何数字**（面板契约 + 跨表一致性）。
         传裸 ``DataFrame`` 会自动包成 ``FactorPanel`` / ``PricePanel``；因子缺
@@ -543,6 +629,12 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     Returns
     -------
     Report
+
+    Notes
+    -----
+    **本函数不做事件研究** —— 因此没有 ``events`` 入参。事件窗口对齐走
+    :func:`~alphalens_cna.analysis.event.align_event_windows`（它同样会校验
+    ``Events`` 契约）。把 ``events`` 塞进来只会误导：报告里没有对应的一节。
     """
     from ..analysis import (factor_returns, ic_summary, information_coefficient,
                             quantile_returns, quantile_stats, quantile_turnover,
@@ -560,9 +652,17 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
     notices = []
     if validate:
+        # ★ 可选契约**一并**送进边界：以前只传 factor/prices/calendar/universe，
+        #   于是 groupby/exposures 的形状问题要到下游 neutralize 才炸，
+        #   而且报的是 AttributeError / 指向错层（用户反馈，已实测）。
         ck = ensure_contract(factor, prices, calendar, universe=universe,
-                             notice=notices)
+                             tradability=tradability, grouping=groupby,
+                             exposures=exposures, notice=notices)
         factor, px = ck['factor'], ck['prices'].df
+        if ck['grouping'] is not None:
+            groupby = ck['grouping']        # 用包装后的对象（消费方会 _unwrap）
+        if ck['exposures'] is not None:
+            exposures = ck['exposures']
         contract_info = {'enabled': True, 'strict': True,
                          'checked': ck['checked'], 'cross': ck['cross'],
                          'notices': notices}
@@ -576,7 +676,11 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
                                  new_stock_days=new_stock_days)
 
     trad = None
-    if prepare_tradability or 'can_buy_open' not in px.columns:
+    if tradability is not None:
+        # 用户自带可成交性：直接用（validate=True 时已在边界按 Tradability 校验过）。
+        # 0.4.0 前没有这个入参 —— 想自带只能隐式往 prices 里塞 can_buy_open 列。
+        trad = tradability
+    elif prepare_tradability or 'can_buy_open' not in px.columns:
         trad = compute_tradability(px, calendar=calendar, names=names,
                                    list_dates=list_dates,
                                    limit_status=limit_status,
@@ -620,6 +724,53 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
     fr = factor_returns(cr, quantiles=q)
     fr0 = fr[fr.columns[0]] if len(fr.columns) else None
+
+    # ── C：组合绩效（统计口径，非可交易净值）──
+    #   复用已经算好的多空收益序列 fr，成本几乎为零。
+    port = None
+    if len(fr.columns):
+        from ..analysis import portfolio_summary as _portfolio_summary
+        port = _portfolio_summary(fr)
+
+    # ── B：样本内 / 样本外对照（稳健性；只有显式要求才做）──
+    iso = {}
+    if is_oos is not None:
+        from ..analysis.split import split_is_oos
+
+        _dates = pd.DatetimeIndex(
+            sorted(set(cr.data.index.get_level_values('date'))))
+        _emb = int(embargo if embargo is not None else max(horizons))
+        _ratio = None
+        if isinstance(is_oos, (int, float)) and not isinstance(is_oos, bool):
+            _ratio = float(is_oos)
+            _sp = split_is_oos(_dates, ratio=_ratio, embargo=_emb)
+        else:
+            _sp = split_is_oos(_dates, cut=is_oos, embargo=_emb)
+        _tables = {}
+        for _label, _seg in (('样本内', _sp['is']), ('样本外', _sp['oos'])):
+            _sub = cr.data[cr.data.index.get_level_values('date').isin(_seg)]
+            if not len(_sub):
+                continue
+            _ics = information_coefficient(_sub)
+            _summ = ic_summary(_ics)
+            # ⚠️ 不要把切片塞回 `CleanResult` —— 它的 `__post_init__` 会跑
+            #    台账对账（输入 = 输出 + 剔除），而切片后的数据配原台账必然不平。
+            #    `quantile_stats` 收的就是普通面板，不需要 CleanResult。
+            _qs = quantile_stats(_sub, quantiles=q, horizons=list(_ics.columns))
+            # ⚠️ 这两个表的持有期都在**索引**上（不是列）——
+            #    `ic_summary` 的 index = 持有期，columns = n/mean/std/icir/t_naive/positive_rate；
+            #    `quantile_stats` 的 index 同样是持有期，columns 含 monotonicity。
+            _rows = {}
+            for _h, _r in _summ.iterrows():
+                _rows[int(_h)] = {'IC 均值': float(_r['mean']), 'ICIR': float(_r['icir']),
+                                  'IC 胜率': float(_r['positive_rate']),
+                                  't(朴素)': float(_r['t_naive']), '期数': int(_r['n'])}
+            for _h, _r in _qs.iterrows():
+                _rows.setdefault(int(_h), {})['单调性'] = float(_r['monotonicity'])
+            _tables[_label] = pd.DataFrame(_rows).T.sort_index() if _rows else None
+        iso = {'info': {'cut': _sp['cut'], 'n_is': _sp['n_is'], 'n_oos': _sp['n_oos'],
+                        'embargo': _sp['embargo'], 'ratio': _ratio},
+               '样本内': _tables.get('样本内'), '样本外': _tables.get('样本外')}
 
     # ── 因子失效监控：子样本一致性 + 衰减斜率（按持有期逐一看，不挑最好的）──
     stab = {}
@@ -670,4 +821,5 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         turnover=ts, verdict=v, tail=tail_tbl, crash=crash_tbl,
         health=hp, preprocess=psteps, stability_detail=stab, dsr=dsr_res,
         dsr_note=dsr_note, contract=contract_info,
+        portfolio=port, is_oos=iso,
         extra={'long_short': fr, 'preprocess_log': _plog(cr)})

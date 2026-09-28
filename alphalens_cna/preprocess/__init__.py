@@ -234,6 +234,11 @@ def neutralize(factor, exposures=None, groups=None, min_obs=10):
         分组标签（行业）。给了就走**组内去均值**（简单行业中性化）；
         否则走对 ``exposures`` 的 OLS 残差。
 
+        ⚠️ 列名**不假设叫 `group`**：DataFrame 有 `group` 列就用它，否则取
+        **唯一那一列**（行业表叫 `industry` / `sw_l1` 都常见）—— 与
+        :class:`~alphalens_cna.contract.panels.Grouping` 的 ``group_col`` 同口径。
+        多列且没有 `group` 时报 ``ambiguous_group``：组内去均值只能有一个分组维度。
+
     Returns
     -------
     与输入同型。**行数不变**；样本不足的截面整段置 NaN 并在痕迹里记数。
@@ -241,7 +246,19 @@ def neutralize(factor, exposures=None, groups=None, min_obs=10):
     s, col = _series(factor)
     _check_index(s)
     if groups is not None:
-        g = (groups['group'] if isinstance(groups, pd.DataFrame) else groups)
+        if isinstance(groups, pd.DataFrame):
+            cols = list(groups.columns)
+            if 'group' in cols:
+                g = groups['group']
+            elif len(cols) == 1:
+                g = groups[cols[0]]
+            else:
+                fail('preprocess', 'ambiguous_group',
+                     f'分组标签只能有一列，收到 {len(cols)} 列：{cols}。\n'
+                     f'  含义：组内去均值需要**一个**分组维度。\n'
+                     f'  修法：只保留那一列，或把要用的那列命名为 `group`。')
+        else:
+            g = groups
         g = g.reindex(s.index)
         if g.isna().all():
             fail('preprocess', 'bad_groups',

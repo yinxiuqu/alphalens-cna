@@ -6,6 +6,8 @@ import os
 import sys
 import subprocess
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -59,12 +61,14 @@ def test_frames_are_tidy():
 
 def test_markdown_contains_key_sections():
     md = build(n_trials=12).to_markdown()
-    for s in ('# demo 因子分析报告', '## 一、结论', '## 二、数据体检',
-              '## 三、样本账', '## 四、IC', '## 五、Newey-West',
-              '## 六、分层', '## 七、因子衰减与稳定性', '## 八、尾部风险',
-              '## 九、换手与成本', '## 十、剔除明细',
-              '怎么读这份报告'):
-        assert s in md, s
+    assert '# demo 因子分析报告' in md
+    # ★ 节次编号是**自动生成**的（`to_markdown` 里按出现顺序编号），
+    #   所以这里按**标题**断言 —— 把编号写进测试的话，以后每加一节都要改测试。
+    for title in ('结论', '数据体检', '样本账', 'IC', 'Newey-West', '分层',
+                  '组合绩效（统计口径，非可交易净值）', '因子衰减与稳定性',
+                  '尾部风险', '换手与成本', '剔除明细'):
+        assert re.search(rf'^## [^、]+、{re.escape(title)}', md, re.M), title
+    assert '怎么读这份报告' in md
     assert 'n_trials' in md and 'p_adj' in md
     assert '1.0000 |' not in md, '持有期不应渲染成 1.0000'
 
@@ -218,7 +222,7 @@ def test_zero_drop_report_still_renders(tmp_path):
     rep2 = dataclasses.replace(rep, clean=zero)
 
     md = rep2.to_markdown()
-    assert '## 十、剔除明细' in md
+    assert re.search(r'^## [^、]+、剔除明细', md, re.M)
     assert '零剔除' in md, '零剔除要写明，不能留一片空白'
 
     # 两条存盘路也都得走通

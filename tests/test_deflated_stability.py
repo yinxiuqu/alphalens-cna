@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 import os, sys
+import re
+
 import numpy as np, pandas as pd, pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import alphalens_cna as acna  # noqa: E402
@@ -164,7 +166,8 @@ def test_report_has_stability_and_dsr():
     assert np.isfinite(r.verdict.stability)
     assert r.verdict.stability == r.stability_detail[21]['stability']
     md = r.to_markdown()
-    assert '## 七、因子衰减与稳定性' in md and '紧缩夏普比率' in md
+    assert re.search(r'^## [^、]+、因子衰减与稳定性', md, re.M), '衰减节'
+    assert '紧缩夏普比率' in md
     fr = r.frames()
     assert 'stability' in fr and 'dsr' in fr
 

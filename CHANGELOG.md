@@ -9,6 +9,77 @@
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核
 
+## [0.4.0] - 2026-09-28
+
+### 破坏性变更
+- **契约层的三处补口**（用户反馈，已逐条实测）：
+  * **`±inf` 现在在每个契约上都拦得住**：`_check_finite` 原先只遍历 `numeric` 声明的列，
+    而 `Exposures` / `Universe` / `Grouping` / `Events` 的 `numeric` 是空的 ——
+    即**一个列都不查**。实测：把 `inf` 塞进 `exposures`，0.3.0 会一路跑通，
+    且结果与把 `inf` 换成 `NaN` **逐位相同**（非法值被静默当成缺失，用户拿不到任何信号）。
+    现在检查 `numeric` ∪ **所有数值 dtype 的列**。
+  * **`build_report` 的可选契约入参一并进边界**：`exposures` / `groupby` 以前不进
+    `ensure_contract`，形状不对时漏的是**裸异常**（实测 `groupby='industry'` →
+    `AttributeError: 'str' object has no attribute 'iloc'`；空表 → `IndexError`），
+    且错误指向下游 `neutralize` 那一层。现在在入口报 `validate/type`、`Grouping/empty`、
+    `Grouping/ambiguous_group`。
+  * **`Grouping` 放宽为「恰好一列」**：不再强制列名 `group`（行业表叫 `industry` /
+    `sw_l1` 都是常见写法）。同时 `preprocess.neutralize(groups=…)` 改为同口径
+    （有 `group` 用它，否则取唯一那一列）—— 契约与消费方**必须一起改**，
+    否则放宽契约会造出 `KeyError` 的新 bug。
+  * **`Tradability` 收紧**：至少要有一列成交信号（`can_buy_open` / `can_sell_open` /
+    `suspended` / `is_st` / `listed_days`）。此前"什么表都能通过"，一张无关列的表会
+    一路穿到 `forward_returns` 才报错。
+- **`double_sort` 换实现（旧的三行包装已从 `analysis/quantile.py` 删除）**：
+  原先那个包装返回 `quantile_returns` 的立方，现由 `analysis/group.py` 的新实现取代 —— 后者给
+  **组内单调性**、**缺格逐格记账**、`n_by`（控制变量层数）。名字不变，但**返回类型变了**
+  （`DataFrame` → `DoubleSortResult`），默认 `method` 也从 `'conditional'` 改为
+  `'independent'`。（仓库内无使用者；设计稿里的调用点已同步。）
+
+### 新增
+- **`analysis/correlation.py`：因子相关性 / 冗余度**（补上评估流程的第 6 步）
+  * `factor_correlation(factors, *, method='spearman', min_overlap=20)` ——
+    **逐期截面相关再对时间汇总**（mean / median / positive_rate / 期数），
+    **不做整体池化相关**（池化会混入共同的时间漂移、系统性高估，把互补因子误判成冗余）；
+    重叠期数不足的对给 NaN 并**写明原因**。
+  * `redundancy_check(candidate, library, *, threshold=0.7, …)` —— 判定"是否与库内因子冗余"，
+    给结论 + 最相关的几个因子 + 阈值依据（与 `Verdict` 同风格）。
+- **`analysis/group.py`：分组 IC / 组内一致性 / 双重排序**（补上待办里的分组口径）
+  * `grouped_ic(data, *, by, …)` —— 逐期**组内**截面 IC → 时间汇总；组内样本不足的期
+    **记账**而不是静默跳过。
+  * `group_consistency(grouped, …)` —— 各组 IC 的同号比例与离散度，回答
+    "因子是不是只在某一组里有效"。
+  * `double_sort(data, *, by, n_by=5, n=5, method='independent')` —— `by` × `q` 宫格平均收益
+    + **组内**单调性（`monotonicity`）与池化单调性（`pooled_monotonicity`）分开给；
+    缺格是 NaN 并逐格记原因，**不填 0**。
+  * 三个函数共用同一条骨架（按列分组 → 逐期截面统计 → 时间汇总），不另写一套口径。
+- **`analysis/split.py`：`split_is_oos`** —— 样本内 / 样本外拆分，补上评估流程第 5 步：
+  * ⚠️ **只按时间顺序切**（时序数据随机切等于没切）；
+  * ⚠️ `embargo` / purge：切分点前挖掉若干期 —— 那些样本的前向收益**跨过切分点**，
+    留着就是把样本外的价格泄漏进样本内；
+  * 两段各不足 `min_periods`（默认 8）期会**报错**，而不是给一段空洞的统计。
+- **`build_report` 两个新入参**：
+  * `tradability=` —— 自带可成交性表（给了就不再自动算，且先在边界校验）；
+  * `is_oos=` / `embargo=` —— 要样本内外对照时给（比例或**切分日**；不给就不做，
+    切分是研究决策，库不替你定）。
+- **报告两节**（节次编号改成**自动生成**，以后加节不必再手改编号）：
+  * 「组合绩效（统计口径，非可交易净值）」—— 年化 / 波动 / 最大回撤 / 夏普 / 胜率，
+    按观测频率年化（相邻日期间隔中位数，月频调仓不会被当成年频的错）；
+    节内**明写不是可交易净值、未扣成本** —— 不能让读者把它当回测曲线。
+  * 「样本内 / 样本外对照」—— 两段的 IC 均值 / ICIR / IC 胜率 / 期数 / 单调性并排，
+    并写明切分日与挖掉了几期。
+- `Report.portfolio` / `Report.is_oos`；`frames()` 新增 `portfolio` / `is_oos_is` / `is_oos_oos`
+  三张表（`save(kind='frames')` 从 14 张变 17 张；**新增而非改名**）。
+
+### 修复
+- **`portfolio_summary` 在累计净值为非正时开分数次方** → `NaN` + `RuntimeWarning`
+  （`(-0.3) ** 0.4` 落到复数域）。这条路径 0.4.0 起会被 `build_report` **默认**走到，
+  所以不能留一个往 stdout 喷警告的静默 NaN；现在判成"无法年化"并在报告该节写明原因。
+- `align_event_windows` 的事件表**进契约**：以前只做 `_as_df`，缺 `event_type` 要拖到下游；
+  现在在入口按 `Events` 报 `missing_columns`。
+- `build_report` 不做事件研究这件事**写进文档**（它没有 `events` 入参；事件走
+  `align_event_windows`）—— 加了入参反而会让人以为报告里有对应的一节。
+
 ## [0.3.0] - 2026-09-28
 
 ### 破坏性变更

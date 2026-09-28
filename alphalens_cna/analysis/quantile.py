@@ -34,7 +34,7 @@ import pandas as pd
 from ..contract.errors import fail
 from .ic import horizon_of, return_cols
 
-__all__ = ['quantize', 'quantile_returns', 'quantile_stats', 'double_sort',
+__all__ = ['quantize', 'quantile_returns', 'quantile_stats',
            'monotonicity_test']
 
 
@@ -229,16 +229,6 @@ def _unwrap(obj):
 
 
 # --------------------------------------------------------------------------- #
-def double_sort(data, by, n=5, method='conditional', horizons=None):
-    """双重排序 —— 返回 ``(date, q_by, q)`` 的平均收益立方。
-
-    **核心用法（可证伪预测）**：先按规模分组，再看**同一规模组内**
-    因子的单调性是否还在。若消失，说明因子效应是规模混淆的产物。
-    """
-    return quantile_returns(data, quantiles=n, by=by, method=method,
-                            horizons=horizons)
-
-
 def monotonicity_test(data, quantiles=5, by=None, method='conditional',
                       horizons=None):
     """分层单调性检验。

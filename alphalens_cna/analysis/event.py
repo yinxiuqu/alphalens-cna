@@ -106,8 +106,13 @@ def align_event_windows(prices, events, calendar, *, window=DEFAULT_WINDOW,
     prices : PricePanel | DataFrame
         ``(date, asset)`` 索引，需含 ``price_col``（默认 ``adj_close``）。
     events : Events | DataFrame
-        ``(date, asset)`` 索引，事件日当天一行。其它列（如 ``surprise``）
-        会被原样带到输出里，便于分组。
+        ``(date, asset)`` 索引，事件日当天一行，**需含 ``event_type``**。
+        其它列（如 ``surprise``）会被原样带到输出里，便于分组。
+
+        ⚠️ 传裸 DataFrame 时会先包装成
+        :class:`~alphalens_cna.contract.panels.Events` 校验 —— 事件表是这个入口的
+        输入契约，缺 ``event_type`` 应当**在这里**报，而不是拖到下游才炸
+        （0.4.0 前只做 `_as_df`，不校验）。
     calendar : Calendar
         交易日历。相对日走它，不用 pandas 的 freq。
     window : (int, int)
@@ -123,8 +128,12 @@ def align_event_windows(prices, events, calendar, *, window=DEFAULT_WINDOW,
     -------
     EventWindows
     """
+    from ..contract.panels import Events
+
     px = _as_df(prices)
     ev = _as_df(events)
+    if not isinstance(ev, Events):
+        ev = Events(ev).df          # 构造即校验（缺 event_type → Events/missing_columns）
     if price_col not in px.columns:
         fail('event', 'missing_price',
              f'价格面板缺 `{price_col}`。事件研究一律用**复权价** —— '

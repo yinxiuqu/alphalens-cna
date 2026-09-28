@@ -120,8 +120,18 @@ class _Panel:
         `_check_positive` 判的是 `<= 0`，正的 inf 满足 `> 0` 会直接穿过去，
         然后在收益 / 相关系数 / 方差里算出 NaN 或 inf —— 属于垃圾进垃圾出，
         宁可在门口拦下。
+
+        ⚠️ 检查范围是 **`numeric` 声明的列 ∪ 所有数值 dtype 的列** —— 不能只看
+        `numeric`：`Exposures` / `Universe` / `Grouping` / `Events` 的 `numeric`
+        是空的（它们的列名不固定），只看 `numeric` 等于**一个列都不查**。
+        实测：把 inf 塞进 `exposures`，`build_report` 会一路跑通，且结果与把
+        inf 换成 NaN **逐位相同** —— 非法值被静默当成缺失，用户拿不到任何信号。
+        （标签 / 字符串列是 object dtype，天然跳过；bool 列不会有 inf。）
         """
-        for col in self.numeric:
+        cols = list(self.numeric) + [
+            c for c in self._df.columns
+            if c not in self.numeric and pd.api.types.is_numeric_dtype(self._df[c])]
+        for col in cols:
             if col not in self._df.columns:
                 continue
             v = pd.to_numeric(self._df[col], errors='coerce').to_numpy(
@@ -313,6 +323,18 @@ class Tradability(_Panel):
     optional = ('suspended', 'is_st', 'listed_days',
                 'limit_up_price', 'limit_down_price')
     numeric = ('listed_days', 'limit_up_price', 'limit_down_price')
+    # 至少要有**一个**能用的成交信号，否则这张表毫无意义 ——
+    # "什么都能通过"等于没有契约。用户反馈里"错层报错"的最后一处就是它：
+    # 一张只有无关列的表会一路穿到 `forward_returns` 才报 bad_tradability。
+    signals = ('can_buy_open', 'can_sell_open', 'suspended', 'is_st', 'listed_days')
+
+    def validate_extra(self):
+        if not any(c in self._df.columns for c in self.signals):
+            fail(self.contract, 'missing_signal',
+                 f'可成交性表至少要有一列成交信号 {list(self.signals)}；'
+                 f'实际列：{list(self._df.columns)}\n'
+                 f'  修法：用 `compute_tradability(prices, calendar=…)` 生成，'
+                 f'或自行提供 `can_buy_open` / `can_sell_open` / `suspended`。')
 
 
 # --------------------------------------------------------------------------- #
@@ -329,10 +351,33 @@ class Universe(_Panel):
 # 5. Grouping
 # --------------------------------------------------------------------------- #
 class Grouping(_Panel):
-    """行业 / 分组标签。必须是 as-of 的（按当日实际所属，不是最新）。"""
+    """行业 / 分组标签。必须是 as-of 的（按当日实际所属，不是最新）。
+
+    ⚠️ 列名**不强制叫 `group`** —— 要求是「**恰好一列**」：
+    行业表叫 `industry` / `sw_l1` 都是常见写法，硬性要求改名会打断合法用法。
+    若同时有 `group` 列则优先用它（`group_col` 会告诉你用的是哪一列）。
+    """
 
     contract = 'Grouping'
-    required = ('group',)
+    required = ()
+
+    @property
+    def group_col(self):
+        """分组标签所在的列名（有 `group` 用它，否则就是唯一那一列）。"""
+        return 'group' if 'group' in self._df.columns else self._df.columns[0]
+
+    def _check_columns(self):
+        super()._check_columns()
+        if not len(self._df.columns):
+            fail(self.contract, 'empty',
+                 'Grouping 至少要有一列分组标签（如 industry）；'
+                 '或改用 `Exposures` 传控制变量。')
+        if len(self._df.columns) > 1 and 'group' not in self._df.columns:
+            fail(self.contract, 'ambiguous_group',
+                 f'分组标签只能有一列，收到 {len(self._df.columns)} 列：'
+                 f'{list(self._df.columns)}。\n'
+                 f'  含义：`neutralize` 的组内去均值需要**一个**分组维度。\n'
+                 f'  修法：只保留那一列；或把要用的那列命名为 `group`。')
 
 
 # --------------------------------------------------------------------------- #

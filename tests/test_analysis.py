@@ -233,10 +233,19 @@ def test_conditional_double_sort_shapes():
     df['size'] = np.tile(np.arange(25), len(DAILY)).astype(float)
     ds = acna.double_sort(df, by=df['size'], n=5, method='conditional',
                           horizons=[1])
-    assert set(ds.index.names) == {'date', 'q_by', 'q'}
-    assert set(ds.index.get_level_values('q_by').unique()) == {1, 2, 3, 4, 5}
+    # ⚠️ 0.4.0 起 `double_sort` 返回 `DoubleSortResult`（不是裸立方）：
+    #    旧的 `(date, q_by, q)` 立方在 `.grid`，均值矩阵在 `.mean`。
+    grid = ds.grid
+    assert set(grid.index.names) == {'date', 'q_by', 'q'}
+    assert set(grid.index.get_level_values('q_by').unique()) == {1, 2, 3, 4, 5}
     # 条件排序：每格样本数均衡
-    assert ds['count'].std() == 0
+    assert grid['count'].std() == 0
+    # 新实现额外给的：宫格均值（index=(q_by,q)，columns=各持有期）+ 组内单调性分开给
+    assert ds.mean.shape == (25, 1), ds.mean.shape          # n_by × n 格 × 1 个持有期
+    assert set(ds.mean.index) == {(b, q) for b in range(1, 6) for q in range(1, 6)}
+    assert list(ds.monotonicity.index) == [(b, 1) for b in range(1, 6)], '组内单调性逐 by 组给'
+    assert len(ds.pooled_monotonicity) == 1, '池化单调性另给，别与组内混为一谈'
+    assert ds.missing.empty, '这一份数据不缺格'
 
 
 def test_conditional_sort_detects_confound():

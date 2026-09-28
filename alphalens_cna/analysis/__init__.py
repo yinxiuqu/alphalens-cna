@@ -4,6 +4,10 @@
 在 ``inference/`` 层 —— 见设计原则 1「推断与计算分离」。
 """
 
+from .correlation import (FactorCorrResult, RedundancyResult,
+                          factor_correlation, redundancy_check)
+from .group import DoubleSortResult, GroupedIC, double_sort, group_consistency, grouped_ic
+from .split import split_is_oos
 from .ic import (
     ic_decay,
     ic_summary,
@@ -43,7 +47,6 @@ from .regression import (
     shanken_inflation,
 )
 from .quantile import (
-    double_sort,
     monotonicity_test,
     quantile_returns,
     quantile_stats,
@@ -51,16 +54,16 @@ from .quantile import (
 )
 
 __all__ = [
-    'information_coefficient', 'ic_summary', 'ic_decay',
-    'rank_autocorrelation', 'quantile_turnover', 'return_cols', 'rolling_ic',
-    'quantize', 'quantile_returns', 'quantile_stats',
-    'double_sort', 'monotonicity_test',
-    'factor_returns', 'cumulative_returns', 'portfolio_summary',
-    'turnover_summary', 'weighted_returns',
-    'cross_sectional_regression', 'fama_macbeth', 'FMResult',
-    'shanken_inflation',
-    'value_at_risk', 'cvar', 'expected_shortfall', 'downside_deviation',
-    'tail_ratio', 'crash_stats', 'tail_by_quantile', 'crash_spread',
-    'align_event_windows', 'event_summary', 'event_path_by_group',
-    'EventWindows',
+    'information_coefficient', 'ic_summary', 'ic_decay', 'rank_autocorrelation',
+    'quantile_turnover', 'return_cols', 'rolling_ic', 'split_is_oos',
+    'factor_correlation', 'redundancy_check', 'FactorCorrResult',
+    'RedundancyResult', 'grouped_ic', 'group_consistency', 'double_sort',
+    'GroupedIC', 'DoubleSortResult', 'quantize', 'quantile_returns',
+    'quantile_stats', 'monotonicity_test', 'factor_returns',
+    'cumulative_returns', 'portfolio_summary', 'turnover_summary',
+    'weighted_returns', 'cross_sectional_regression', 'fama_macbeth', 'FMResult',
+    'shanken_inflation', 'value_at_risk', 'cvar', 'expected_shortfall',
+    'downside_deviation', 'tail_ratio', 'crash_stats', 'tail_by_quantile',
+    'crash_spread', 'align_event_windows', 'event_summary',
+    'event_path_by_group', 'EventWindows'
 ]

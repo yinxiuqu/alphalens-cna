@@ -32,6 +32,10 @@ PROMISED = [
     # L3/L4 预处理与分析
     'winsorize', 'standardize', 'neutralize', 'orthogonalize', 'combine',
     'quantize', 'quantile_returns', 'quantile_stats',
+    # 0.4.0：评估闭环（相关性 / 分组 IC / 双重排序 / 样本内外）
+    'factor_correlation', 'redundancy_check', 'FactorCorrResult', 'RedundancyResult',
+    'grouped_ic', 'group_consistency', 'double_sort', 'GroupedIC', 'DoubleSortResult',
+    'split_is_oos',
     'information_coefficient', 'ic_summary', 'ic_decay', 'rolling_ic',
     'factor_returns', 'cumulative_returns', 'quantile_turnover',
     'cross_sectional_regression', 'fama_macbeth',
