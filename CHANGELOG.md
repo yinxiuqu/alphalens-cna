@@ -5,6 +5,40 @@
 
 ## [Unreleased]
 
+### 破坏性变更
+- **一条龙入口补上防线 1** —— `build_report` / `check_parity` 现在默认先做契约校验
+  （`validate=True`），以前能跑通的**坏数据**现在会被**拒绝运行**：
+  前视（`available_at > date`）、因子日期不在交易日历、`raw_*` 有值而 `adj_*` 缺行、
+  价格含 `±inf`、factor 的 `(date, asset)` 在 prices 里找不到、
+  代码带交易所后缀导致资产无交集。
+
+  **为什么这是对的**：这些数据算出来的数字本身就是错的，**静默放行才是 bug**。
+  此前防线 1 靠"构造即校验"，只在走 loader 或用户显式构造面板时生效；
+  一条龙入口把裸 DataFrame 解包后直接往下传，契约层从未被调用 ——
+  上述坏数据能生成一份看着完全正常的报告。
+
+  逃生门 `validate=False`（报告首屏会写明防线 1 已关闭）。
+  ⚠️ 因子缺 `available_at` 时按 `= date` 合成（与 loader 既有约定一致），
+  但**不许静默**：这个事实会进 `Report.contract['notices']` 并在报告首屏印出
+  "前视检查因此未生效"。
+
+### 新增
+- `contract.validate.ensure_contract()` —— 入口层统一契约校验：把裸 DataFrame
+  包成契约对象 + 跨表校验，并**返回包装好的对象**
+  （`factor` / `prices` / `checked` / `cross` / `notices` …），供一条龙入口复用，
+  免得二次包装。`validate_inputs()` 成为它的薄封装（仍返回 `True`，向后兼容）。
+- `Report.contract` —— 防线 1 的收据：`{'enabled','strict','checked','cross','notices'}`，
+  报告 Markdown **首屏**打印一行（正常 / 缺 `available_at` / 校验已关闭 三种形态）。
+
+### 修复
+- **防线 1 的入口缺口**：契约层从未在一条龙入口被调用（见上），
+  前视、非交易日、复权缺行、`+inf`、因子多出行五类坏数据在 `build_report` 下静默跑通。
+- `validate_inputs()` 现在也接受裸 `DatetimeIndex` 当 `calendar`
+  （原先抛 `AttributeError: 'DatetimeIndex' object has no attribute 'index'`）。
+- **跨表检查性能**：原先 `set(index.get_level_values(...).unique())` 在 960,000 行
+  面板上代价很高，现改为整数 code 去重（`bincount`）——
+  两项集合检查从 1.1 s 降到毫秒级，且唯一值只算一次、两处检查共用。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

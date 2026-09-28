@@ -94,7 +94,8 @@ class ParityReport:
 
 # --------------------------------------------------------------------------- #
 def check_parity(factor, prices, calendar, horizons=(1, 5, 21), quantiles=5,
-                 tol=DEFAULT_TOL, checks=('ic', 'quantile', 'turnover')):
+                 tol=DEFAULT_TOL, checks=('ic', 'quantile', 'turnover'),
+                 validate=True):
     """与 alphalens 对拍三个核心量。
 
     Parameters
@@ -109,6 +110,11 @@ def check_parity(factor, prices, calendar, horizons=(1, 5, 21), quantiles=5,
     quantiles : int
     tol : float
         数值容差，默认 ``1e-10``。
+    validate : bool
+        默认 ``True``：**先过防线 1**（面板契约 + 跨表一致性）再对拍 ——
+        对拍是"两个实现算得一样吗"，前提是**输入本身没坏**；否则只是
+        一致地算错。收据会记进 ``ParityReport.notes``。
+        传 ``False`` 关掉整层校验，收据里会写明已关闭。
 
     Returns
     -------
@@ -128,6 +134,19 @@ def check_parity(factor, prices, calendar, horizons=(1, 5, 21), quantiles=5,
     from ..engine.returns import ReturnModel, forward_returns
 
     rep = ParityReport()
+    # ★ 防线 1：对拍之前先把输入校验掉（与 build_report 同一口径）。
+    if validate:
+        from ..contract.validate import ensure_contract
+
+        ck = ensure_contract(factor, prices, calendar)
+        factor, prices = ck['factor'], ck['prices']
+        rep.notes.append('契约校验（防线 1）通过：'
+                         + ' · '.join(list(ck['checked'])
+                                      + [f"跨表 {len(ck['cross'])} 项"]))
+        rep.notes.extend(ck['notices'])
+    else:
+        rep.notes.append('契约校验（防线 1）**已关闭**（`validate=False`）—— '
+                         '面板契约与跨表一致性未检查')
     px = getattr(prices, 'df', prices)
     f = _factor_series(factor)
     rep.freq = _freq_label(calendar)

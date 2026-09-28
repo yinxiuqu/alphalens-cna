@@ -37,7 +37,7 @@ pip install "git+https://github.com/yinxiuqu/alphalens-cna.git"
 
 | # | 防线 | 落点 | 失败表现 |
 |---|---|---|---|
-| 1 | 契约校验 | `contract/` | **拒绝运行**，不产出数字 |
+| 1 | 契约校验 | `contract/` + 各一条龙入口（`build_report` / `check_parity`） | **拒绝运行**，不产出数字 |
 | 2 | 数据体检 | `health.check()` | 10 项体检，超阈值告警 + 明细 |
 | 3 | 不变量对账 | `CleanResult.ledger` | 输入 = 输出 + 各类剔除，**对不上就抛异常** |
 | 4 | **等价性回归** | `compat.check_parity()` | 退化配置下与 alphalens **逐位相同（0.000e+00）** |
@@ -66,6 +66,10 @@ rep = acna.build_report(factor, prices, calendar,
 print(rep.verdict)          # 结论 + 尾部风险，都带不确定性
 open('report.md', 'w').write(rep.to_markdown())
 ```
+
+> 这里传裸 `DataFrame` 也会**先过防线 1**（自动包成 `FactorPanel` / `PricePanel`）；
+> 想跳过用 `validate=False`（报告首屏会写明防线 1 已关闭）。
+> 上面三个变量在示例里没定义，**完整可运行示例见 [`docs/输入数据规格.md`](docs/输入数据规格.md)**。
 
 报告九节：结论 / **数据体检** / 样本账 / IC / Newey-West / 分层 / **尾部风险** / 换手 / 剔除明细。
 

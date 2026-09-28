@@ -21,6 +21,21 @@ from ..contract.errors import fail
 __all__ = ['Report', 'build_report']
 
 
+def _contract_line(c):
+    """把防线 1 的收据渲染成一行（首屏可见）。"""
+    if not c.get('enabled'):
+        return ('**契约校验（防线 1）**：**已关闭**（`validate=False`）'
+                '—— 面板契约与跨表一致性**未检查**。')
+    parts = [f'{n} ✓' for n in c.get('checked') or []]
+    cross = c.get('cross') or []
+    if cross:
+        parts.append(f'跨表 {len(cross)} 项 ✓')
+    s = '**契约校验（防线 1）**：' + (' · '.join(parts) if parts else '—') + '。'
+    for n in c.get('notices') or []:
+        s += f' ⚠️ {n}'
+    return s
+
+
 @dataclass
 class Report:
     """一次因子分析的完整产物。
@@ -72,6 +87,10 @@ class Report:
     tail: pd.DataFrame = None
     crash: pd.DataFrame = None
     health: object = None
+    contract: dict = field(default_factory=dict)
+        # **防线 1 的收据**：{'enabled','checked','cross','notices'}。
+        # 空 dict = 没走统一校验（例如直接用低层引擎）。报告首屏会把它印出来 ——
+        # "这份数字有没有先过契约"必须能一眼看到，不能靠猜。
     dsr: object = None
     save_report: dict = field(default_factory=dict)
         # 上一次 save() **实际**写了什么格式、有哪些降级了。
@@ -124,6 +143,9 @@ class Report:
         L.append('> 由 alphalens-cna 生成。**所有数字都带不确定性标注** —— '
                  '未校正的 p 值不作为结论依据。')
         L.append('')
+        if self.contract:
+            L.append(f'> {_contract_line(self.contract)}')
+            L.append('')
 
         if self.verdict is not None:
             L.append('## 一、结论')
@@ -464,7 +486,7 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
                  model=None, n_trials=None, method='bhy', cost_bps=15.0,
                  name='factor', new_stock_days=60, prepare_tradability=True,
                  health=True, crash_threshold=None, preprocess=None,
-                 warn_unnormalized=True):
+                 warn_unnormalized=True, validate=True):
     """**一条龙**：数据体检 → 可成交性 → 前向收益 → 清洗 → 分层 → IC → NW → Verdict。
 
     Parameters
@@ -491,6 +513,18 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
         ``'neutralize'`` 需要 ``exposures`` 或 ``groupby``，否则报错。
         例：``preprocess=('winsorize', 'standardize', 'neutralize')``
+    validate : bool
+        默认 ``True``：**先过防线 1 再算任何数字**（面板契约 + 跨表一致性）。
+        传裸 ``DataFrame`` 会自动包成 ``FactorPanel`` / ``PricePanel``；因子缺
+        ``available_at`` 时按 ``= date`` 合成（与 loader 约定一致），并在报告首屏
+        写明**前视检查因此未生效** —— 不许静默。
+
+        ⚠️ 这一层曾经是**缺的**：防线 1 只在走 loader 或显式构造面板时生效，
+        裸 DataFrame 直通本函数会整层绕过（实测前视 / 非交易日 / 复权缺行 /
+        ``+inf`` / 因子多出行五类坏数据静默跑通，并生成一份看着正常的报告）。
+
+        传 ``False`` 会关掉整层校验 —— 报告首屏会写明"防线 1 已关闭"，
+        免得看报告的人以为它过了。
     warn_unnormalized : bool
         默认 ``True``：**给了 ``exposures`` / ``groupby`` 却没做中性化时，在结论里告警**。
         依据是实测 —— 同一个 ROE 因子，市值中性化前后 RankIC 会**符号翻转**
@@ -515,7 +549,25 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
     from ..inference.newey_west import newey_west_summary
     from ..inference.verdict import assess
 
-    px = getattr(prices, 'df', prices)
+    # ★ 防线 1 接线：**先把输入校验掉，再算任何数字。**
+    #   契约层原先只在"走 loader / 显式构造面板"时生效，裸 DataFrame 走一条龙
+    #   入口会整层绕过 —— 坏数据能生成一份看着完全正常的报告。
+    from ..contract.validate import ensure_contract
+
+    notices = []
+    if validate:
+        ck = ensure_contract(factor, prices, calendar, universe=universe,
+                             notice=notices)
+        factor, px = ck['factor'], ck['prices'].df
+        contract_info = {'enabled': True, 'strict': True,
+                         'checked': ck['checked'], 'cross': ck['cross'],
+                         'notices': notices}
+    else:
+        px = getattr(prices, 'df', prices)
+        contract_info = {
+            'enabled': False, 'strict': False, 'checked': [], 'cross': [],
+            'notices': ['`validate=False`：**防线 1 已关闭** —— '
+                        '面板契约与跨表一致性未检查']}
     model = model or ReturnModel(entry='next_open', policy='skip',
                                  new_stock_days=new_stock_days)
 
@@ -613,5 +665,5 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         quantile_stats=quantile_stats(cr, quantiles=q),
         turnover=ts, verdict=v, tail=tail_tbl, crash=crash_tbl,
         health=hp, preprocess=psteps, stability_detail=stab, dsr=dsr_res,
-        dsr_note=dsr_note,
+        dsr_note=dsr_note, contract=contract_info,
         extra={'long_short': fr, 'preprocess_log': _plog(cr)})

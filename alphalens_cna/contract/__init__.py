@@ -17,7 +17,7 @@ from .panels import (
     Tradability,
     Universe,
 )
-from .validate import check_adjust_agreement, validate_inputs
+from .validate import check_adjust_agreement, ensure_contract, validate_inputs
 
 __all__ = [
     'Calendar',
@@ -30,5 +30,6 @@ __all__ = [
     'Exposures',
     'Events',
     'validate_inputs',
+    'ensure_contract',
     'check_adjust_agreement',
 ]

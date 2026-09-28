@@ -43,8 +43,13 @@ class _Panel:
                  f'需要 pandas.DataFrame，收到 {type(df).__name__}')
         self._df = df.copy() if copy else df
         self._normalize_index()
+        # ★ 记下"到底校验过没有"：`XxxPanel(df, validate=False)` 造出来的对象
+        #   如果不留痕，下游（入口层统一校验）就只能靠猜，于是"上游关掉校验、
+        #   下游以为校验过了"这种静默漏洞就有了藏身处。
+        self._validated = False
         if validate:
             self.validate()
+            self._validated = True
 
     # -- 索引 -----------------------------------------------------------------
     def _normalize_index(self):

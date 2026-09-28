@@ -120,6 +120,7 @@ from .contract import (
     Tradability,
     Universe,
     check_adjust_agreement,
+    ensure_contract,
     validate_inputs,
 )
 
@@ -187,5 +188,6 @@ __all__ = [
     'Exposures',
     'Events',
     'validate_inputs',
+    'ensure_contract',
     'check_adjust_agreement',
 ]
