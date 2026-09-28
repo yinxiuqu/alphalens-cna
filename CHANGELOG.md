@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### 待办
+- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
+- 退市收益约定的行业维度复核
+
+## [0.3.0] - 2026-09-28
+
 ### 破坏性变更
 - **一条龙入口补上防线 1** —— `build_report` / `check_parity` 现在默认先做契约校验
   （`validate=True`），以前能跑通的**坏数据**现在会被**拒绝运行**：
@@ -41,10 +47,6 @@
 - **跨表检查性能**：原先 `set(index.get_level_values(...).unique())` 在 960,000 行
   面板上代价很高，现改为整数 code 去重（`bincount`）——
   两项集合检查从 1.1 s 降到毫秒级，且唯一值只算一次、两处检查共用。
-
-### 待办
-- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
-- 退市收益约定的行业维度复核
 
 ## [0.2.0] - 2026-09-25
 
