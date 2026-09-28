@@ -87,10 +87,6 @@ class Report:
     tail: pd.DataFrame = None
     crash: pd.DataFrame = None
     health: object = None
-    contract: dict = field(default_factory=dict)
-        # **防线 1 的收据**：{'enabled','checked','cross','notices'}。
-        # 空 dict = 没走统一校验（例如直接用低层引擎）。报告首屏会把它印出来 ——
-        # "这份数字有没有先过契约"必须能一眼看到，不能靠猜。
     dsr: object = None
     save_report: dict = field(default_factory=dict)
         # 上一次 save() **实际**写了什么格式、有哪些降级了。
@@ -99,6 +95,14 @@ class Report:
         # DSR **没能计算**时的原因。空串 = 算出来了。
         # 不许静默省略：报告里会显示"未计算 + 原因"。
     extra: dict = field(default_factory=dict)
+    contract: dict = field(default_factory=dict)
+        # **防线 1 的收据**：{'enabled','checked','cross','notices'}。
+        # 空 dict = 没走统一校验（例如直接用低层引擎）。报告首屏会把它印出来 ——
+        # "这份数字有没有先过契约"必须能一眼看到，不能靠猜。
+        #
+        # ⚠️ **新字段一律追加在末尾**：`Report` 是 dataclass，插在中间会让
+        # `Report(...)` 的位置参数整体错位（外部用户会静默拿到错的字段）。
+        # 本字段最初就是插在 `health` 后面的，自审时挪到了末尾。
 
     # -- tidy 输出 ----------------------------------------------------------
     def frames(self):

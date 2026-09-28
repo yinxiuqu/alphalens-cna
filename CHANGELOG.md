@@ -18,6 +18,9 @@
   上述坏数据能生成一份看着完全正常的报告。
 
   逃生门 `validate=False`（报告首屏会写明防线 1 已关闭）。
+  另：`validate_inputs(..., grouping=…, exposures=…, tradability=…, events=…)`
+  这几个参数以前是**收了但不用**（传什么都行），现在会真的包装并校验 ——
+  例如 `grouping` 现在必须带 `group` 列，否则报 `missing_columns`。
   ⚠️ 因子缺 `available_at` 时按 `= date` 合成（与 loader 既有约定一致），
   但**不许静默**：这个事实会进 `Report.contract['notices']` 并在报告首屏印出
   "前视检查因此未生效"。

@@ -278,3 +278,48 @@ def test_wrong_object_gets_actionable_error_not_attributeerror():
         acna.ensure_contract(f, ret, dates)          # Returns 有 .df、没有 validate()
     assert e.value.rule == 'type'
     assert 'validate()' in str(e.value)
+
+
+def test_unvalidated_factor_panel_is_revalidated():
+    """★ 对称性：价格侧会补校验，因子侧**不能**因为"类型已经是面板"就放行。
+
+    自审实测：`FactorPanel(f, validate=False)` 传进 `build_report` 时前视会被
+    静默放行 —— 而缺的恰好是最要命的那个闸门。
+    """
+    dates, px, f = mk()
+    f = f.copy()
+    f.loc[(dates[5], '600000'), 'available_at'] = dates[6]        # 前视
+    p = acna.FactorPanel(f, validate=False)
+    assert p._validated is False
+    with pytest.raises(ContractError) as e:
+        run(dates, px, p)
+    assert e.value.rule == 'lookahead'
+
+
+@pytest.mark.parametrize('kw,rule', [
+    ({'factor': None}, 'missing'),
+    ({'prices': None}, 'missing'),
+    ({'calendar': None}, 'missing'),
+    ({'factor': 42}, 'type'),
+])
+def test_missing_or_wrong_type_inputs_get_actionable_errors(kw, rule):
+    """缺项 / 传错类型要给可执行报错，不许漏 `AttributeError` / `TypeError`。"""
+    dates, px, f = mk()
+    args = {'factor': f, 'prices': px, 'calendar': acna.Calendar(dates)}
+    args.update(kw)
+    with pytest.raises(ContractError) as e:
+        acna.ensure_contract(args['factor'], args['prices'], args['calendar'])
+    assert e.value.rule == rule, f'{list(kw)} → {e.value.rule}'
+    assert 'AttributeError' not in str(e.value) and 'TypeError' not in str(e.value)
+
+
+def test_new_report_fields_are_appended_last():
+    """★ `Report` 是 dataclass：新字段必须追加在末尾。
+
+    插在中间会让 `Report(...)` 的**位置参数**整体错位 —— 外部用户会静默拿到
+    错位的字段（自审时 `contract` 最初就插在 `health` 后面，已挪到末尾）。
+    """
+    import dataclasses
+
+    names = [f.name for f in dataclasses.fields(acna.Report)]
+    assert names[-1] == 'contract', f'新字段应追加在末尾，实际末尾是 {names[-1]}'

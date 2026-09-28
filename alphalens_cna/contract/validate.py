@@ -84,6 +84,11 @@ def _factor_validation_frame(df, assume_available_at, notice):
     """
     if isinstance(df, pd.Series):         # clean 也收 Series（to_frame('factor')）
         df = df.to_frame('value')
+    if not isinstance(df, pd.DataFrame):
+        fail('validate', 'type',
+             f'`factor` 需要 DataFrame / Series / FactorPanel，'
+             f'收到 {type(df).__name__}。')
+
     if 'factor' in df.columns:            # clean 优先取 factor，这里必须跟着
         col = 'factor'
     elif 'value' in df.columns:
@@ -110,6 +115,18 @@ def _factor_validation_frame(df, assume_available_at, notice):
              '  修法：补上这一列；或显式传 `assume_available_at=True` '
              '（按 `= date` 合成 —— **前视检查将不生效**，报告里会写明）。')
     return base
+
+
+def _as_factor(obj, assume_available_at, notice):
+    """因子 → ``FactorPanel``。裸 DataFrame/Series 先归一；**已是面板的也要补校验**。
+
+    ⚠️ 不能因为"类型已经是 FactorPanel"就放行：``FactorPanel(df, validate=False)``
+    造出来的对象同样没查过前视。价格侧走 ``_wrap_for_check`` 会补校验，因子侧
+    若放行，两侧就不对称了 —— 而缺的恰好是最要命的那个闸门。
+    """
+    if isinstance(obj, (pd.DataFrame, pd.Series)) or not hasattr(obj, 'df'):
+        return FactorPanel(_factor_validation_frame(obj, assume_available_at, notice))
+    return _wrap_for_check('factor', obj)
 
 
 def _wrap_for_check(name, obj, validate=True, **kw):
@@ -172,13 +189,18 @@ def ensure_contract(factor, prices, calendar, *, universe=None, tradability=None
         'checked','cross','notices','strict'}``：
         ``checked`` 是构造并校验通过的契约名，``cross`` 是跑过的跨表检查名。
     """
+    notices = notice if notice is not None else []
+    # 三项必填：缺了要给可执行报错，不能让 `None` 一路漏成
+    # `AttributeError: 'NoneType' object has no attribute 'df'`（自审实测过）。
+    for _nm, _obj in (('factor', factor), ('prices', prices), ('calendar', calendar)):
+        if _obj is None:
+            fail('validate', 'missing',
+                 f'必须给 `{_nm}` —— 契约校验的三项必填是 factor / prices / calendar。')
     cal = as_calendar(calendar)
     checked, cross = [], []
-    notices = notice if notice is not None else []
+    notice_holder = notices
 
-    fp = (factor if isinstance(factor, FactorPanel)
-          else FactorPanel(_factor_validation_frame(_unwrap_or_frame(factor),
-                                                    assume_available_at, notices)))
+    fp = _as_factor(factor, assume_available_at, notice_holder)
     pp = _wrap_for_check('prices', prices)
     up = _wrap_for_check('universe', universe)
     tp = _wrap_for_check('tradability', tradability)
