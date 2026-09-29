@@ -340,4 +340,8 @@ def _factor_frame(factor):
         return df[[cand[0]]].rename(columns={cand[0]: 'factor'})
     fail('clean', 'ambiguous_factor',
          f'因子表看不出哪列是因子值（候选 {cand}）。\n'
-         f'  修法：把列命名为 `value` 或 `factor`。')
+         f'  ⚠️ 本库**一次分析一个因子** —— 多列宽表要先选定一列，'
+         f'不是把多因子交给它自己挑。\n'
+         f'  修法：把要用的那列命名为 `value` 或 `factor`；'
+         f'多因子请**逐列调用**（或先合成成单列）；'
+         f'比较因子之间的相关性/冗余用 `factor_correlation` / `redundancy_check`。')

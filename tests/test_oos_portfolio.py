@@ -192,15 +192,14 @@ def test_default_embargo_actually_purges_the_cut_boundary():
     rep = build(dates, px, f, horizons=horizons, is_oos=0.7)
     info = rep.is_oos['info']
     cut = pd.Timestamp(info['cut'])
-    assert info['embargo'] == max(horizons) + 1, '默认 embargo = 最大持有期 + 1'
+    assert info['mode'] == 'exact', info   # 0.4.2 起按日历精确 purge
 
     cal = pd.DatetimeIndex(acna.Calendar(dates).index)
-    # 样本内最后一个样本、最长持有期：入场在 t+1，出场在 t+1+h
-    is_end = cal[cal < cut][-info['embargo'] - 1]          # split_is_oos 的切片口径
-    exit_date = cal[cal.get_indexer([is_end])[0] + 1 + max(horizons)]
-    assert exit_date < cut, (
-        f'样本内末样本 {is_end:%Y-%m-%d} 的前向收益出场在 {exit_date:%Y-%m-%d}，'
-        f'不早于切分日 {cut:%Y-%m-%d} —— 泄漏')
+    all_d = pd.DatetimeIndex(sorted(set(rep.clean.data.index.get_level_values('date'))))
+    pos = cal.get_indexer(all_d)
+    leak = [d for d, p in zip(all_d, pos) if d < cut and p + 1 + max(horizons) < len(cal)
+            and cal[p + 1 + max(horizons)] >= cut]
+    assert len(leak) <= info['purged'], f'样本内仍有 {len(leak)} 个样本的出场日碰到切分日'
 
 
 def test_embargo_zero_is_allowed_but_says_nothing_was_purged():

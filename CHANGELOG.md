@@ -5,6 +5,37 @@
 
 ## [Unreleased]
 
+### 修复（0.4.2）
+- **`is_oos` 的 purge 改成按日历精确剔除**（修 0.4.0 引入的**单位错配**）。
+  `split_is_oos` 的 `embargo` 数的是"分析日期**期数**"，而 `build_report` 用
+  **交易日数**（`horizons`）算它 —— 日频同量纲，**月末调仓差约 21 倍**：
+  实测月末 60 期面板 `horizons=(21,63)` 时默认 `embargo=64` → **样本内 0 期、直接跑不起来**；
+  `(21,)` 时挖掉 22 个月末（本意 22 个交易日）。
+  现在默认改为**按日历精确 purge**：只剔掉"前向收益窗口碰到切分日之后"的样本内样本
+  （实测同一面板 purge 1 / 2 / 5 个，三种 horizons 全部跑通）；`entry_lag` 跟
+  `ReturnModel.entry` 走；显式 `embargo=N` 仍走老口径（尊重显式意图），两者同时给则报错。
+  并在报错里给出**下界**与**可行 ratio 区间**（"我到底需要多长样本"直接有答案）。
+- **两条报错改成指向下一步**：
+  * `double_sort` / `grouped_ic` 缺 `forward_return_*` 时不再抛到下游 `ic` 层
+    （`ic/no_returns`，容易被误读成"没跑 forward_returns"），改为入口报
+    `group/missing_returns` 并给两步处方（`forward_returns` → `clean` → 调用）；
+  * `clean` 的 `ambiguous_factor` 补上"**本库一次分析一个因子**"与多因子入口指引
+    （`factor_correlation` / `redundancy_check`）。
+- **澄清一个易误判的依赖问题**（实测为**误报**，故只改文档、不加代码）：
+  `Report.to_markdown()` / `HealthReport.to_markdown()` **自带渲染、零可选依赖** ——
+  在屏蔽 `tabulate` 的环境里实测正常（6099 / 2071 字符）。需要 `tabulate` 的是
+  **pandas 的** `DataFrame.to_markdown()`。README 与输入规格已写明，避免使用者去装
+  一个本库不需要的包。
+
+### 新增
+- **`Report.sections()` + `SECTION_KEYS`** —— 报告各节的**稳定键**
+  （`verdict` / `health` / `ledger` / `ic` / `newey_west` / `quantile` / `portfolio` /
+  `stability` / `tail` / `turnover` / `is_oos` / `dropped`）。0.4.0 起节号是自动编号、
+  会随版本变化（加「组合绩效」后稳定性从 `## 七` 挪到 `## 八`），下游若按节号解析
+  Markdown 会**静默取空**。现在按 key 定位即可；`to_markdown` 文档也加了"勿按节号解析"。
+- 7 个契约类的 docstring 各补一句：**入口层（`build_report` / `check_parity`）会补校验，
+  传裸 `DataFrame` 也会被自动包装** —— 不必自己记着构造契约对象。
+
 ### 待办
 - 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
 - 退市收益约定的行业维度复核

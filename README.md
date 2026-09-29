@@ -180,6 +180,9 @@ scripts/ci_local.sh          # ≈ 三个 CI job：测试 / 零绘图依赖 / �
 scripts/ci_local.sh --quick  # 跳过对拍 job（不装 alphalens-reloaded）
 ```
 
+> ⚠️ `Report.to_markdown()` **自带 Markdown 渲染，不依赖任何可选包**。
+> 需要 `tabulate` 的是 **pandas 自己的** `DataFrame.to_markdown()` —— 两者同名但不是一回事。
+
 **为什么不能只跑 `pytest`**：CI 的依赖集和日常开发环境不一样，本项目在这上面吃过两次亏——
 
 | 坑 | 现象 |

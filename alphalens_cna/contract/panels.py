@@ -184,7 +184,10 @@ class FactorPanel(_Panel):
     ``value``     float64        因子值
     ``available_at`` datetime64  该值**何时可知**（硬闸门）
     ============  =============  =====================================
-    """
+    
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'FactorPanel'
     required = ('value', 'available_at')
@@ -232,7 +235,10 @@ class PricePanel(_Panel):
 
     ⚠️ 缺 ``raw_*`` 或 ``adj_factor`` 会被拒绝 —— 前者判不了涨跌停，
     后者换不了口径。
-    """
+    
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'PricePanel'
     required = ('raw_open', 'raw_high', 'raw_low', 'raw_close', 'prev_close',
@@ -316,7 +322,10 @@ class Tradability(_Panel):
     ==============  =========  ==========================================
 
     ⚠️ **不要**用「收盘在板」字段判开盘成交 —— 那是前视。
-    """
+    
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'Tradability'
     required = ()
@@ -341,7 +350,10 @@ class Tradability(_Panel):
 # 4. Universe
 # --------------------------------------------------------------------------- #
 class Universe(_Panel):
-    """as-of 股票池。**防生存者偏差的硬闸门。**"""
+    """as-of 股票池。**防生存者偏差的硬闸门。**
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'Universe'
     required = ('in_universe',)
@@ -356,7 +368,10 @@ class Grouping(_Panel):
     ⚠️ 列名**不强制叫 `group`** —— 要求是「**恰好一列**」：
     行业表叫 `industry` / `sw_l1` 都是常见写法，硬性要求改名会打断合法用法。
     若同时有 `group` 列则优先用它（`group_col` 会告诉你用的是哪一列）。
-    """
+    
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'Grouping'
     required = ()
@@ -391,7 +406,10 @@ class Grouping(_Panel):
 # 6. Exposures
 # --------------------------------------------------------------------------- #
 class Exposures(_Panel):
-    """控制变量（市值、换手、PB…）。做中性化或 Fama-MacBeth 时必填。"""
+    """控制变量（市值、换手、PB…）。做中性化或 Fama-MacBeth 时必填。
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'Exposures'
     required = ()
@@ -407,7 +425,10 @@ class Exposures(_Panel):
 # 7. Events
 # --------------------------------------------------------------------------- #
 class Events(_Panel):
-    """事件日。只保留事件发生那一天的行（不是每日一行）。"""
+    """事件日。只保留事件发生那一天的行（不是每日一行）。
+
+    ⚠️ 你**不必**自己记着构造本对象：``build_report`` / ``check_parity`` 会在入口处
+    补校验，传裸 ``DataFrame`` 也会被自动包装成对应契约（``contract.validate.ensure_contract``）。"""
 
     contract = 'Events'
     required = ('event_type',)

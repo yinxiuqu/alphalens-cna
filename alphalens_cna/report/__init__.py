@@ -30,6 +30,21 @@ def _sec_no(i):
     return _CN[i] if 0 < i < len(_CN) else str(i)
 
 
+#: 报告各节的**稳定键**（节号会随版本变化，键不会）。
+#: 下游要对 Markdown 做后处理时，请用 `Report.sections()` 按 **key** 定位，
+#: 不要按 `## 七` 这种节号解析 —— 0.4.0 起节号是自动编号的，加一节就会整体后移。
+SECTION_KEYS = ('verdict', 'health', 'ledger', 'ic', 'newey_west', 'quantile',
+                'portfolio', 'stability', 'tail', 'turnover', 'is_oos', 'dropped')
+
+_SECTION_KEY_BY_TITLE = {
+    '结论': 'verdict', '数据体检': 'health', '样本账': 'ledger', 'IC': 'ic',
+    'Newey-West 修正': 'newey_west', '分层': 'quantile',
+    '组合绩效（统计口径，非可交易净值）': 'portfolio',
+    '因子衰减与稳定性': 'stability', '尾部风险': 'tail', '换手与成本': 'turnover',
+    '样本内 / 样本外对照': 'is_oos', '剔除明细': 'dropped',
+}
+
+
 def _contract_line(c):
     """把防线 1 的收据渲染成一行（首屏可见）。"""
     if not c.get('enabled'):
@@ -120,6 +135,26 @@ class Report:
         # 本字段最初就是插在 `health` 后面的，自审时挪到了末尾。
 
     # -- tidy 输出 ----------------------------------------------------------
+    def sections(self):
+        """报告实际渲染出的节 → ``[{'key','number','title'}, …]``。
+
+        **稳定定位入口**：节号（``一、二、…``）会随版本变化，``key`` 不会。
+        下游若要按节取内容，请这样用：
+
+        >>> [s['key'] for s in rep.sections()]            # 有没有'稳定性'这一节
+        >>> next(s for s in rep.sections() if s['key'] == 'stability')
+        {'key': 'stability', 'number': '八', 'title': '因子衰减与稳定性'}
+
+        （实现上直接从渲染好的 Markdown 里解析，保证与真实输出一致。）
+        """
+        import re as _re
+        out = []
+        for m in _re.finditer(r'^## ([^、]+)、(.+)$', self.to_markdown(), _re.M):
+            title = m.group(2).strip()
+            out.append({'key': _SECTION_KEY_BY_TITLE.get(title, title),
+                        'number': m.group(1), 'title': title})
+        return out
+
     def frames(self):
         """所有表 → ``dict[str, DataFrame]``（**绘图工具的入口**）。"""
         out = {
@@ -162,6 +197,10 @@ class Report:
 
         ⚠️ 节次编号是**自动**的（``一、二、三…``）：新增节时不必再手改所有编号，
         也不会出现"加了新节、后面编号全错"的情况。条件渲染的节不占号。
+
+        ⚠️ 因此**节号会随版本变化**（0.4.0 加「组合绩效」后，稳定性那节从 `## 七`
+        挪到了 `## 八`）—— 下游**不要按节号解析** Markdown，请用
+        :meth:`Report.sections` 按 **key** 定位（如 ``'stability'``）。
         """
         _n = [0]
 
@@ -328,9 +367,15 @@ class Report:
             info = self.is_oos['info']
             L.append(H('样本内 / 样本外对照'))
             L.append('')
+            if info.get('mode') == 'exact':
+                _purge_txt = (f"精确 purge（按持有期 {max(info['horizons'])} 个交易日 + "
+                              f"入场滞后 {info['entry_lag']}）剔掉了 **{info['purged']}** "
+                              f"个样本内样本")
+            else:
+                _purge_txt = f"embargo={info['embargo']} 期分析日期"
             L.append(f"> 切分日 **{info['cut']:%Y-%m-%d}**"
                      f"（样本内 {info['n_is']} 期 / 样本外 {info['n_oos']} 期，"
-                     f"embargo={info['embargo']} 期）。")
+                     f"{_purge_txt}）。")
             L.append('')
             for seg in ('样本内', '样本外'):
                 tbl = self.is_oos.get(seg)
@@ -602,9 +647,16 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
         ⚠️ 切分**只按时间顺序**（时序数据随机切等于没切），并在切分点前挖掉
         ``embargo`` 期 —— 那些样本的前向收益跨过切分点，留着就是泄漏。
     embargo : int, 可选
-        purge 的期数，默认 ``max(horizons) + 1``（最大持有期**再加一天**：
-        `entry='next_open'` 下样本 t 的前向收益覆盖 ``[t+1, t+1+h]``，
-        要让它**严格早于**切分日，装不下那一天就会读到样本外的价格）。
+        ⚠️ **一般不用给**。默认走**按日历精确 purge**：直接剔掉"前向收益窗口
+        碰到切分日之后"的样本内样本（按 `max(horizons)` + 入场滞后算，跟
+        `ReturnModel.entry` 一致）。
+
+        给了 `embargo=N` 则改用"挖掉 N 期**分析日期**"的老口径 —— 注意它数的是
+        **期数**而不是交易日：月末调仓时 N=22 会挖掉 22 **个月**。
+        需要"按持有期精确挖"就用默认（或显式给 `embargo=None`）。
+
+        ⚠️ 可用期数有下界：`N ≳ purge 期数 + 2×min_periods`；且提高 `ratio`
+        会同时压缩样本外。撞到下界时报错会直接给出**可行的 ratio 区间**。
     validate : bool
         默认 ``True``：**先过防线 1 再算任何数字**（面板契约 + 跨表一致性）。
         传裸 ``DataFrame`` 会自动包成 ``FactorPanel`` / ``PricePanel``；因子缺
@@ -741,17 +793,22 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
 
         _dates = pd.DatetimeIndex(
             sorted(set(cr.data.index.get_level_values('date'))))
-        # ⚠️ 默认 embargo 必须比最大持有期**多一天**：样本在 t 日、`entry='next_open'`
-        #    时前向收益覆盖 [t+1, t+1+h]，所以 t+1+h 要**严格早于**切分日。
-        #    实测：embargo = max(horizons) 时，样本内最后一个样本的 h=21 出场日
-        #    正好落在切分日上（读到样本外价格）；+1 就不泄漏。
-        _emb = int(embargo if embargo is not None else max(horizons) + 1)
+        # ★ purge 口径（0.4.2 起）：默认走**按日历精确 purge** —— 直接剔掉
+        #   "前向收益窗口碰到切分日之后"的样本内样本。
+        #   为什么不再用 `embargo = max(horizons) + 1`：那个数数的是"分析日期**期数**"，
+        #   而 horizons 是**交易日数** —— 日频同量纲，**月末调仓差约 21 倍**
+        #   （实测月末 60 期面板：h=(21,63) → 默认 embargo=64 → 样本内 0 期、直接跑不起来）。
+        #   用户显式给 `embargo` 时仍按他的口径走（尊重显式意图）。
+        _lag = 1 if getattr(model, 'entry', 'next_open') == 'next_open' else 0
         _ratio = None
+        _mode_kw = ({'embargo': int(embargo)} if embargo is not None else
+                    {'calendar': calendar, 'purge_horizons': list(horizons),
+                     'entry_lag': _lag})
         if isinstance(is_oos, (int, float)) and not isinstance(is_oos, bool):
             _ratio = float(is_oos)
-            _sp = split_is_oos(_dates, ratio=_ratio, embargo=_emb)
+            _sp = split_is_oos(_dates, ratio=_ratio, **_mode_kw)
         else:
-            _sp = split_is_oos(_dates, cut=is_oos, embargo=_emb)
+            _sp = split_is_oos(_dates, cut=is_oos, **_mode_kw)
         _tables = {}
         for _label, _seg in (('样本内', _sp['is']), ('样本外', _sp['oos'])):
             _sub = cr.data[cr.data.index.get_level_values('date').isin(_seg)]
@@ -775,7 +832,9 @@ def build_report(factor, prices, calendar, *, horizons=(1, 5, 21), quantiles=5,
                 _rows.setdefault(int(_h), {})['单调性'] = float(_r['monotonicity'])
             _tables[_label] = pd.DataFrame(_rows).T.sort_index() if _rows else None
         iso = {'info': {'cut': _sp['cut'], 'n_is': _sp['n_is'], 'n_oos': _sp['n_oos'],
-                        'embargo': _sp['embargo'], 'ratio': _ratio},
+                        'embargo': _sp['embargo'], 'ratio': _ratio,
+                        'mode': _sp.get('mode'), 'purged': _sp.get('purged'),
+                        'horizons': list(horizons), 'entry_lag': _lag},
                '样本内': _tables.get('样本内'), '样本外': _tables.get('样本外')}
 
     # ── 因子失效监控：子样本一致性 + 衰减斜率（按持有期逐一看，不挑最好的）──

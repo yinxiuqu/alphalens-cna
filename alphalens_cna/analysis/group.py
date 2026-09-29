@@ -83,6 +83,29 @@ def _unwrap(obj, contract):
          f'收到 {type(obj).__name__}')
 
 
+def _check_returns_columns(df, contract, func):
+    """入口自检：`data` 必须同时含 `factor` 与至少一个 `forward_return_*`。
+
+    ⚠️ 不查的话，缺收益列会一路抛到下游 `analysis/ic.py` 的 `ic/no_returns`，
+    报错码指向 `ic` 层 —— 排查时容易误判成"没跑 forward_returns"，
+    而真实原因往往是**切片时把收益列切掉了**（例如 `cr.data[['factor']]`）。
+    """
+    if 'factor' not in df.columns:
+        fail(contract, 'no_factor',
+             f'缺 `factor` 列；实际列：{list(df.columns)[:12]}\n'
+             f'  `{func}` 要的是**清洗后的分析面板**，不是原始因子表。\n'
+             f'  两步处方：`r = forward_returns(prices, calendar, horizons)` → '
+             f'`cr = clean(factor, r)` → `{func}(cr.data, …)`；'
+             f'一条龙入口是 `build_report`。')
+    if not [c for c in df.columns if str(c).startswith('forward_return_')]:
+        fail(contract, 'missing_returns',
+             f'`data` 里没有 `forward_return_*` 列；实际列：{list(df.columns)[:12]}\n'
+             f'  含义：`{func}` 的统计全部基于前向收益，光有因子值算不出东西。\n'
+             f'  常见原因：切片时把收益列切掉了（如 `cr.data[["factor"]]`）。\n'
+             f'  修法：用完整的 `cr.data`（`clean()` 的输出），'
+             f'或先跑 `forward_returns()` 再 join 回来。')
+
+
 def _check_panel(df, contract):
     """索引必须是 ``MultiIndex(date, asset)`` —— 全库统一约定。"""
     if not isinstance(df.index, pd.MultiIndex):
@@ -556,6 +579,7 @@ def grouped_ic(data, *, by, horizons=None, method='spearman',
     if not isinstance(df, pd.DataFrame):
         fail('group', 'bad_input', f'需要 DataFrame，收到 {type(df).__name__}')
     _check_panel(df, 'group')
+    _check_returns_columns(df, 'group', 'grouped_ic')
     _check_method(method, 'group')
     if 'factor' not in df.columns:
         fail('group', 'no_factor',
@@ -569,7 +593,7 @@ def grouped_ic(data, *, by, horizons=None, method='spearman',
         fail('group', 'bad_min_group_size',
              f'min_group_size 必须是 ≥ {_MIN_OBS} 的整数，收到 {min_group_size!r}。\n'
              f'  原因：{_MIN_OBS} 只以下算出的相关系数只有 ±1 两种取值（噪声）。')
-    cols = return_cols(df, horizons)                 # 缺列时以 'ic' 契约报错
+    cols = return_cols(df, horizons)                 # 入口已自检过收益列（_check_returns_columns）
     h_of = {c: horizon_of(c) for c in cols}
     hcols = sorted(h_of.values())
 
@@ -971,6 +995,7 @@ def double_sort(data, *, by, n_by=5, n=5, method='independent',
     if not isinstance(df, pd.DataFrame):
         fail('group', 'bad_input', f'需要 DataFrame，收到 {type(df).__name__}')
     _check_panel(df, 'group')
+    _check_returns_columns(df, 'group', 'double_sort')
     if 'factor' not in df.columns:
         fail('group', 'no_factor',
              f'缺 `factor` 列；实际列：{list(df.columns)[:12]}')
@@ -985,7 +1010,7 @@ def double_sort(data, *, by, n_by=5, n=5, method='independent',
     if method not in ('independent', 'conditional'):
         fail('group', 'bad_method',
              f"method 只能是 'independent' / 'conditional'，收到 {method!r}")
-    cols = return_cols(df, horizons)                 # 缺列时以 'ic' 契约报错
+    cols = return_cols(df, horizons)                 # 入口已自检过收益列（_check_returns_columns）
 
     key_frame, names = _key_frame(df, by, contract='group')
     if len(names) != 1:
