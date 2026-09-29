@@ -5,7 +5,13 @@
 
 ## [Unreleased]
 
-### 修复（0.4.2）
+### 待办
+- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
+- 退市收益约定的行业维度复核
+
+## [0.4.2] - 2026-09-29
+
+### 修复
 - **`is_oos` 的 purge 改成按日历精确剔除**（修 0.4.0 引入的**单位错配**）。
   `split_is_oos` 的 `embargo` 数的是"分析日期**期数**"，而 `build_report` 用
   **交易日数**（`horizons`）算它 —— 日频同量纲，**月末调仓差约 21 倍**：
@@ -35,10 +41,6 @@
   Markdown 会**静默取空**。现在按 key 定位即可；`to_markdown` 文档也加了"勿按节号解析"。
 - 7 个契约类的 docstring 各补一句：**入口层（`build_report` / `check_parity`）会补校验，
   传裸 `DataFrame` 也会被自动包装** —— 不必自己记着构造契约对象。
-
-### 待办
-- 分组 IC（`grouped_ic` / `group_consistency`）—— 触发条件见 `outputs/功能增补清单`
-- 退市收益约定的行业维度复核
 
 ## [0.4.1] - 2026-09-28
 
