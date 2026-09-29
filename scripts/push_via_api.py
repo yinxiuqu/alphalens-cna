@@ -39,7 +39,30 @@ API = 'https://api.github.com'
 
 
 def sh(*args: str) -> str:
-    return subprocess.run(args, capture_output=True, text=True).stdout.strip()
+    out = subprocess.run(args, capture_output=True).stdout
+    return out.decode('utf-8', 'replace').strip()
+
+
+def changed_files(base: str, tip: str):
+    """``[(状态, 路径, 旧路径或 None)]`` —— 用 ``-z`` 取，别让 git 转义中文路径。
+
+    ⚠️ 默认的 ``git diff --name-status`` 会把非 ASCII 路径输出成
+    ``"docs/\\345\\217\\221..."``（``core.quotePath`` 默认为真）。那样不光显示难看，
+    **拿去 open() 会直接 FileNotFoundError** —— 中文文件名全推不上去。
+    """
+    raw = subprocess.run(['git', 'diff', '--name-status', '-z', base, tip],
+                         capture_output=True).stdout.decode('utf-8', 'replace')
+    toks = [t for t in raw.split('\0') if t]
+    res, i = [], 0
+    while i < len(toks):
+        st = toks[i]
+        if st[0] in ('R', 'C'):            # 重命名/复制：状态 \0 旧 \0 新 \0
+            res.append((st, toks[i + 2], toks[i + 1]))
+            i += 3
+        else:
+            res.append((st, toks[i + 1], None))
+            i += 2
+    return res
 
 
 def get_token() -> str:
@@ -96,15 +119,14 @@ def main() -> int:
         sys.exit(f'✗ 远端 {head[:7]} 不是本地 {local[:7]} 的祖先 —— 分叉了，'
                  f'先 git fetch 看清楚，不要用这个脚本硬推')
 
-    changed = sh('git', 'diff', '--name-status', f'{head}', local).splitlines()
+    changed = changed_files(head, local)
     commits = sh('git', 'rev-list', '--count', f'{head}..{local}')
     print(f'仓库      : {owner}/{repo}  分支 {branch}')
     print(f'远端 HEAD : {head[:7]}')
     print(f'本地 HEAD : {local[:7]}  （{commits} 个提交待推）')
     print(f'涉及文件  : {len(changed)} 个')
-    for line in changed:
-        st, *rest = line.split('\t')
-        print(f'   {st:>2}  {rest[-1]}')
+    for st, path, old in changed:
+        print(f'   {st:>4}  {path}' + (f'   ← {old}' if old else ''))
 
     if not args.apply:
         print('\n（dry-run）加 --apply 才会真推。')
@@ -113,19 +135,27 @@ def main() -> int:
 
     base_tree = call(tok, 'GET', f'/repos/{owner}/{repo}/git/commits/{head}')['tree']['sha']
     entries = []
-    for line in changed:
-        parts = line.split('\t')
-        st, path = parts[0], parts[-1]
-        if st == 'D':
-            entries.append({'path': path, 'mode': '100644',
-                            'type': 'blob', 'sha': None})
-            continue
+
+    def add_blob(path: str):
         blob = call(tok, 'POST', f'/repos/{owner}/{repo}/git/blobs',
                     {'content': base64.b64encode(open(path, 'rb').read()).decode(),
                      'encoding': 'base64'})
         mode = '100755' if os.access(path, os.X_OK) else '100644'
         entries.append({'path': path, 'mode': mode,
                         'type': 'blob', 'sha': blob['sha']})
+
+    for st, path, old in changed:
+        if st == 'D':
+            entries.append({'path': path, 'mode': '100644',
+                            'type': 'blob', 'sha': None})
+        elif st[0] in ('R', 'C'):
+            # 重命名：旧路径置空 + 新路径写内容（API 的 tree 不认"移动"，只能一删一加）
+            if old:
+                entries.append({'path': old, 'mode': '100644',
+                                'type': 'blob', 'sha': None})
+            add_blob(path)
+        else:
+            add_blob(path)
 
     tree = call(tok, 'POST', f'/repos/{owner}/{repo}/git/trees',
                 {'base_tree': base_tree, 'tree': entries})
