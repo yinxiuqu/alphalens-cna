@@ -98,6 +98,13 @@ def main() -> int:
                     help='真的推送；不加则只 dry-run')
     args = ap.parse_args()
 
+    # ★ 必须先切到仓库根：`git diff` 给的是「仓库根相对路径」，而 open() 是 cwd 相对的。
+    #   从子目录运行时两者对不上 —— 直接 FileNotFoundError，什么都推不上去。
+    top = sh('git', 'rev-parse', '--show-toplevel')
+    if not top:
+        sys.exit('✗ 当前目录不在 git 仓库里')
+    os.chdir(top)
+
     slug = sh('git', 'config', '--get', 'remote.origin.url')
     m = re.search(r'github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?$', slug)
     if not m:
