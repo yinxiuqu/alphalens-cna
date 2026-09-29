@@ -91,6 +91,33 @@ def _feasible_ratio_hint(d, cut_date, purge_horizons, calendar, entry_lag,
     return f'可行的 ratio 约 [{min(ok):.2f}, {max(ok):.2f}]（N={len(d)}）。'
 
 
+def _feasible_cut_hint(d, cut_date, purge_horizons, calendar, entry_lag, embargo,
+                       min_periods):
+    """切分日**固定**时给的建议 —— 这时该挪的是切分日，不是 `ratio`。
+
+    与 :func:`_feasible_ratio_hint` 的分工：那个答"`ratio` 给多少可行"，
+    这个答"切分日放在哪儿可行"。**用错会给出根本不管用的建议** ——
+    用户明明给的是固定 `cut=`（`ratio` 完全不参与运算），却被告知
+    "把 `ratio` 挪进可行区间"（0.4.3 修）。
+
+    切分日取 ``d[k]`` 时可样本内是 ``k - purge`` 期、样本外是 ``N - k`` 期，
+    条件 ``k ≥ min_periods + purge`` 与 ``k ≤ N - min_periods`` 都是 k 的单调约束，
+    所以可行集一定是**连续区间**，报首尾即可（不必罗列）。
+    """
+    ok = []
+    for c in d[1:-1]:                      # 切分日必须在数据区间内部
+        is_d, oos_d, _, _, _, _ = _split_slices(
+            d, ratio=0.7, cut=c, embargo=int(embargo),
+            calendar=calendar, purge_horizons=purge_horizons, entry_lag=entry_lag)
+        if len(is_d) >= min_periods and len(oos_d) >= min_periods:
+            ok.append(c)
+    if not ok:
+        return ('⚠️ 固定切分日下**没有任何可行的日期**（N 太短）—— '
+                '此时改用 `ratio=` 也一样不行，只能放宽数据区间。')
+    return (f'可行的切分日区间：**{ok[0]:%Y-%m-%d} ~ {ok[-1]:%Y-%m-%d}**'
+            f'（你给的 {cut_date:%Y-%m-%d} 不在其中）。')
+
+
 def _as_dates(dates):
     """任意日期序列 → 去重升序的 ``DatetimeIndex``。"""
     d = pd.DatetimeIndex(pd.Series(dates).dropna().unique())
@@ -178,16 +205,26 @@ def split_is_oos(dates, *, ratio=0.7, cut=None, embargo=0, min_periods=8,
         purge_horizons=purge_horizons, entry_lag=entry_lag)
 
     if len(is_dates) < min_periods or len(oos_dates) < min_periods:
+        if cut is not None:
+            # ★ 固定切分日：`ratio` 不参与运算，别给"调 ratio"的建议（0.4.3 修）
+            _advice = (
+                f'  ⚠️ 你给的是**固定切分日** `cut={cut_date:%Y-%m-%d}` —— '
+                f'这种模式下 `ratio` 不参与运算，调它没有用，要挪的是切分日。\n'
+                f'  {_feasible_cut_hint(d, cut_date, purge_horizons, calendar, entry_lag, embargo, min_periods)}\n'
+                f'  修法：把切分日挪进上面的可行区间。')
+        else:
+            _advice = (
+                f'  ⚠️ 提高 `ratio` 会**同时压缩样本外**，两头互相挤 —— 可行区间往往比想象窄。\n'
+                f'  {_feasible_ratio_hint(d, cut_date, purge_horizons, calendar, entry_lag, embargo, min_periods)}\n'
+                f'  修法：放宽数据区间（最有效）、减小 purge（精确模式下换更短持有期）、'
+                f'或把 `ratio` 挪进上面的可行区间。')
         fail('split', 'too_few_periods',
              f'样本内 {len(is_dates)} 期 / 样本外 {len(oos_dates)} 期，'
              f'至少各需 {min_periods} 期（{_purge_label(mode, emb, purge_horizons, entry_lag)}）。\n'
              f'  含义：段太短时 IC / IR 本身就是噪声，"样本外有效"无从谈起。\n'
              f'  下界：可用期数 N 至少要 ≈ purge 期数 + 2×min_periods'
              f'（当前 N={len(d)}，purge≈{len(d) - len(is_dates)}）。\n'
-             f'  ⚠️ 提高 `ratio` 会**同时压缩样本外**，两头互相挤 —— 可行区间往往比想象窄。\n'
-             f'  {_feasible_ratio_hint(d, cut_date, purge_horizons, calendar, entry_lag, embargo, min_periods)}\n'
-             f'  修法：放宽数据区间（最有效）、减小 purge（精确模式下换更短持有期）、'
-             f'或把 `ratio` 挪进上面的可行区间。')
+             f'{_advice}')
 
     return {'is': is_dates, 'oos': oos_dates, 'cut': cut_date, 'embargo': emb,
             'n_is': int(len(is_dates)), 'n_oos': int(len(oos_dates)),

@@ -90,6 +90,61 @@ def test_split_rejects_bad_input(kw, rule):
     assert e.value.rule == rule
 
 
+# ── 1b. `too_few_periods` 的建议必须**对症**（0.4.3）────────────────────────
+def test_fixed_cut_advice_is_about_cut_not_ratio():
+    """给的是固定 `cut=` 时，`ratio` **根本不参与运算** —— 别让人去调 ratio。
+
+    0.4.2 及以前两种模式给的是同一段"可行的 ratio 约 […]"：对固定切分日的
+    用户完全不管用（怎么改 ratio 都毫无效果），等于把人支到错的方向上。
+    """
+    d = pd.bdate_range('2023-01-02', periods=100)
+    with pytest.raises(ContractError) as e:
+        split_is_oos(d, cut='2023-05-01', min_periods=30)
+    msg = e.value.detail
+    assert '固定切分日' in msg
+    assert '可行的切分日区间' in msg
+    assert '把 `ratio` 挪进' not in msg, f'固定 cut 又给了 ratio 的建议：{msg}'
+
+
+def test_ratio_advice_still_talks_about_ratio():
+    """对照：按比例切时建议仍然谈 ratio —— 别把这条一起改坏。"""
+    d = pd.bdate_range('2023-01-02', periods=100)
+    with pytest.raises(ContractError) as e:
+        split_is_oos(d, ratio=0.95, min_periods=30)
+    msg = e.value.detail
+    assert '可行的 ratio 约' in msg
+    assert '固定切分日' not in msg
+
+
+def test_fixed_cut_advice_range_actually_works():
+    """建议里那个区间必须**真的可行** —— 按它取首尾切分日都要跑得通。
+
+    钉住的是"建议是否可执行"，而不是某个魔数：切片口径一改，区间会变，
+    但"照它做就能跑通"这条断言应当恒成立。
+    """
+    d = pd.bdate_range('2023-01-02', periods=100)
+    with pytest.raises(ContractError) as e:
+        split_is_oos(d, cut='2023-05-01', min_periods=30)
+    m = re.search(r'(\d{4}-\d{2}-\d{2}) ~ (\d{4}-\d{2}-\d{2})', e.value.detail)
+    assert m, f'没给出可行的切分日区间：{e.value.detail}'
+    for c in (m.group(1), m.group(2)):
+        sp = split_is_oos(d, cut=pd.Timestamp(c), min_periods=30)
+        assert sp['n_is'] >= 30 and sp['n_oos'] >= 30, (c, sp)
+
+
+def test_fixed_cut_with_no_feasible_date_says_ratio_wont_help():
+    """短到没有任何可行切分日时，要**明说**改用 ratio 也一样不行。
+
+    否则用户会去改 ratio、发现没用、再回来 —— 白跑一轮。
+    """
+    d = pd.bdate_range('2023-01-02', periods=20)
+    with pytest.raises(ContractError) as e:
+        split_is_oos(d, cut='2023-01-20', min_periods=15)
+    msg = e.value.detail
+    assert '没有任何可行的日期' in msg
+    assert '也一样不行' in msg
+
+
 # ── 2. 报告集成：不要就不出现；要了也不改数字 ──────────────────────────────
 def test_no_is_oos_section_by_default():
     dates, px, f = mk()
