@@ -40,16 +40,22 @@
 #      - docs/版本进展.md：## 现状 的「已发布」+ ## 版本一览 加一行
 #      - README.md：安装行的版本号、## 状态 的「当前版本」、防线 5 的测试数
 #        （README 是 PyPI 页面的长描述 —— 漏改的话要**等下次发版**才会刷新）
-git commit -am "release: v0.1.0"
-git tag v0.1.0
-git push origin main --tags
+git commit -am "release: vX.Y.Z"
+git push origin main
 
 # 2. 在 GitHub 网页上：Releases → Draft a new release
-#    选择 tag v0.1.0 → 填标题 → Publish release
+#    填 tag（vX.Y.Z，不存在则新建）→ 填标题 → Publish release
+#
+#    ★ tag 由这一步创建，**不要**本地 `git tag` + `git push --tags`：
+#      0.2.0 起各版都直接从 main 发，本地 `git tag -l` 只到 v0.1.7 是正常的，
+#      远端 v0.2.0+ 的 tag 都是建 Release 时生成的。
 ```
 
 > 0.4.2 那次就漏了「版本进展.md / README 版本字样」这一步（发行物与代码本身没问题，
 > 事后补了一个纯文档提交）—— 所以把它写进清单，别靠记性。
+>
+> **逐条可执行、带期望值的完整清单见 [发版核对清单.md](发版核对清单.md)**
+> （发布前 / 发布 / 发布后核对 / 版本字样收尾，含 0.4.2 的实跑记录与两个坑）。
 
 **发布 Release 的那一刻**，Actions 会自动：构建 sdist + wheel → `twine check` 门禁
 → 发到 PyPI。（若 metadata 不合规，会在校验这步失败，**不会**浪费掉版本号。）
