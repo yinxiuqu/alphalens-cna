@@ -88,13 +88,20 @@ try() {
   out="$(GIT_TERMINAL_PROMPT=0 timeout "$PUSH_TIMEOUT" \
          git "$@" push "$url" "$BRANCH" 2>&1)"
   rc=$?
-  if [ $rc -eq 0 ]; then
+
+  # 判定不看单一信号：实测遇到过一次 `rc=1` 却输出 `Everything up-to-date`
+  # （瞬时抖动，事后无法复现）。既然"已是最新"本身就是目标状态，就别判成失败。
+  if [ $rc -eq 0 ] || printf '%s' "$out" | grep -q 'Everything up-to-date'; then
     printf '%s\n' "$out" | sed 's/^/      /'
     printf '  ✓ %s 成功\n' "$desc"
     return 0
   fi
-  printf '  ✗ %s 失败（rc=%s）：%s\n' "$desc" "$rc" \
-         "$(printf '%s' "$out" | tail -1 | cut -c1-110)"
+
+  # 报错时先滤掉那条无害的凭证锁提示，否则它会把真正的错误挤到最后一行之外
+  local why
+  why="$(printf '%s\n' "$out" | grep -v '获得凭证存储锁' | grep -v '^[[:space:]]*$' | head -1)"
+  [ -n "$why" ] || why="$(printf '%s' "$out" | tail -1)"
+  printf '  ✗ %s 失败（rc=%s）：%s\n' "$desc" "$rc" "$(printf '%s' "$why" | cut -c1-130)"
   return 1
 }
 
