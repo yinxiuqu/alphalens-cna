@@ -142,9 +142,16 @@ if [ -z "$REMOTE_SHA" ]; then
   HOW=" （经 API 查得）"
 fi
 printf '  远端 %s = %s%s\n' "$BRANCH" "${REMOTE_SHA:-（取不到）}" "$HOW"
-printf '  未推送提交数   = %s\n' "$(git rev-list --count "origin/$BRANCH..HEAD" 2>/dev/null || echo '?')"
+# ⚠️ 别用 `origin/$BRANCH..HEAD` 数：本脚本推的是**URL**，git 不会更新本地的
+#    origin/main 跟踪引用 —— 刚推成功也会显示"未推送 1 个"。改用刚查到的远端 SHA。
+if [ -n "$REMOTE_SHA" ]; then
+  printf '  未推送提交数   = %s\n' "$(git rev-list --count "$REMOTE_SHA..HEAD" 2>/dev/null || echo '?')"
+else
+  printf '  未推送提交数   = （远端取不到，无法判断）\n'
+fi
 
 if [ "$SUCCESS" -eq 1 ]; then
+  GIT_TERMINAL_PROMPT=0 timeout 45 git fetch -q origin "$BRANCH" 2>/dev/null || true
   printf '\n✅ 已推送成功\n'
   exit 0
 fi
