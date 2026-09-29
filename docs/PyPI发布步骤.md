@@ -35,6 +35,11 @@
 
 ```bash
 # 1. 改版本号（pyproject.toml 的 version）并更新 CHANGELOG.md
+#
+#    ★ 顺带更新这三处「版本字样」，否则会出现"代码已发新版、文档还写着旧版"：
+#      - docs/版本进展.md：## 现状 的「已发布」+ ## 版本一览 加一行
+#      - README.md：安装行的版本号、## 状态 的「当前版本」、防线 5 的测试数
+#        （README 是 PyPI 页面的长描述 —— 漏改的话要**等下次发版**才会刷新）
 git commit -am "release: v0.1.0"
 git tag v0.1.0
 git push origin main --tags
@@ -43,9 +48,21 @@ git push origin main --tags
 #    选择 tag v0.1.0 → 填标题 → Publish release
 ```
 
+> 0.4.2 那次就漏了「版本进展.md / README 版本字样」这一步（发行物与代码本身没问题，
+> 事后补了一个纯文档提交）—— 所以把它写进清单，别靠记性。
+
 **发布 Release 的那一刻**，Actions 会自动：构建 sdist + wheel → `twine check` 门禁
 → 发到 PyPI。（若 metadata 不合规，会在校验这步失败，**不会**浪费掉版本号。）
 去 <https://pypi.org/project/alphalens-cna/> 看到即成功。
+
+**发布后核对**（不装包）：
+
+```bash
+# ① Actions 里 CI 与 Publish to PyPI 两个 run 都 success
+# ② PyPI 上的版本号与发行物 sha256（下载后 sha256sum 对一遍）
+curl -s https://pypi.org/pypi/alphalens-cna/json \
+  | python -c "import json,sys; d=json.load(sys.stdin); print(d['info']['version'])"
+```
 
 ## 三、发布前自查（本地）
 
